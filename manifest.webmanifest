@@ -1,0 +1,13 @@
+{
+  "name": "마음온도",
+  "short_name": "마음온도",
+  "description": "공부 전에 마음을 체크하고 가라앉히는 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFF7F2",
+  "theme_color": "#FFF7F2",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
