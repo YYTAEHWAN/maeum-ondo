@@ -149,7 +149,7 @@ input[type="range"] { width: 100%; accent-color: var(--c, var(--pink)); height: 
 /* 입력 */
 .field { display: block; margin: 14px 0; }
 .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 700; }
-input[type="text"], input[type="number"], textarea, select {
+input[type="text"], input[type="number"], input[type="time"], textarea, select {
   width: 100%;
   padding: 12px 14px;
   border: 1.5px solid var(--line);
@@ -349,3 +349,23 @@ input[type="search"]:focus { border-style: solid; border-color: var(--pink); }
 
 @keyframes up { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
+
+/* 어제 기록: 게이지·시각 입력 */
+.gauge { margin: 14px 0; }
+.gauge.untouched .val { background: var(--line); color: var(--muted); }
+.gauge.untouched input[type="range"] { opacity: 0.55; }
+.time-wrap { display: block; position: relative; }
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  min-height: 48px;
+  text-align: left;
+}
+input[type="time"]:invalid, input[type="time"][value=""] { color: var(--muted); font-weight: 400; }
+input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.45; cursor: pointer; }
+input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+.add-day-item { display: block; margin: 4px 0 14px; }

@@ -14,11 +14,11 @@ export const dayKey = (v) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-// 어제 기록 항목 (홈 화면에서 하루 한 번): type 'number' | 'bool' | 'time'
+// 어제 기록 항목 (홈 화면에서 하루 한 번): type 'scale'(0~10 게이지) | 'number' | 'bool' | 'time'
 // 수면 시간은 sleepLog로 따로 저장한다
 function defaultFactors() {
   const fac = (name, emoji, type, unit = '', aliases) => ({ id: uid(), name, emoji, type, scope: 'day', unit, aliases });
-  return [fac('개운함 (0~10)', '🌤️', 'number', '점', ['잠의 질 (0~10)']), fac('잠든 시간', '🕚', 'time')];
+  return [fac('개운함', '🌤️', 'scale', '', ['개운함 (0~10)', '잠의 질 (0~10)', '잠의 질']), fac('잠든 시간', '🕚', 'time')];
 }
 
 // 몸 컨디션으로 분류할 마음 항목 (예전 데이터를 나눌 때 사용)
@@ -156,6 +156,14 @@ function normalize() {
     data.conditionScale = 10;
   }
   if (data.model !== 2) migrateToModel2();
+  // '0~10' 숫자 항목은 게이지로 바꾼다 (이름의 '(0~10)'은 게이지가 대신 보여 준다)
+  for (const f of data.factors) {
+    if (f.type === 'number' && /0\s*~\s*10/.test(f.name)) {
+      f.type = 'scale';
+      f.unit = '';
+      f.name = f.name.replace(/\s*\(\s*0\s*~\s*10\s*\)/, '').trim() || f.name;
+    }
+  }
 }
 
 // 구조 변경: 마음을 몸 컨디션/마음으로 나누고,
