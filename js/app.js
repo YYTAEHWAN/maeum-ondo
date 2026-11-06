@@ -749,6 +749,33 @@ function triggerSheet(id, quick = false) {
   });
 }
 
+// 마음 항목은 늘어날수록 체크할 슬라이더가 많아지므로 골라서 추가한다
+function emotionDefaultsSheet() {
+  const list = store.missingDefaults('emotions');
+  if (!list.length) return toast('기본 항목이 이미 다 있어요');
+  const body = `<p class="muted">추가할 마음을 골라 주세요. 많을수록 체크할 때 슬라이더가 늘어나요.</p>
+    ${list
+      .map(
+        (e) => `<label class="pick">
+          <input type="checkbox" name="pick" value="${esc(e.name)}">
+          <span class="em">${e.emoji}</span>
+          <span class="grow"><span class="name">${esc(e.name)}</span>
+          <span class="sub">${e.desc ? `${esc(e.desc)} · ` : ''}${e.direction === 'good' ? '높을수록 좋아요' : '높을수록 안 좋아요'}</span></span>
+          <span class="check">✓</span>
+        </label>`
+      )
+      .join('')}`;
+  openSheet('✨ 마음 항목 추가', body, (fd) => {
+    const names = fd.getAll('pick');
+    if (!names.length) {
+      toast('하나 이상 골라 주세요 🙏');
+      return 'keep';
+    }
+    const n = store.addMissingDefaults('emotions', names);
+    toast(`마음 항목 ${n}개를 추가했어요 ✨`);
+  });
+}
+
 function factorSheet(id) {
   const f = (id && store.find('factors', id)) || { name: '', emoji: '🧩', type: 'number', scope: 'check', unit: '' };
   const radio = (name, value, label, checked) =>
@@ -890,6 +917,7 @@ const handlers = {
   'edit-factor': factorSheet,
   'del-factor': (id) => confirmDelete('이 컨디션 요인을 지울까요?\n예전 기록의 값은 통계에서 빠져요.', () => store.remove('factors', id)),
   'load-defaults': (col) => {
+    if (col === 'emotions') return emotionDefaultsSheet();
     const n = store.addMissingDefaults(col);
     toast(n ? `기본 항목 ${n}개를 추가했어요 ✨` : '기본 항목이 이미 다 있어요');
     render();

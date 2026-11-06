@@ -55,6 +55,16 @@ function createDefaults() {
       { id: uid(), name: '놀고 싶은 마음', emoji: '🎮', color: '#FF9AA2', direction: 'bad', threshold: 6, aliases: ['놀고 싶음'] },
       { id: uid(), name: '미루고 싶은 마음', emoji: '🐢', color: '#C9B6A6', direction: 'bad', threshold: 5 },
       { id: uid(), name: '집중하고 싶은 마음', emoji: '🎯', color: '#9ED9B5', direction: 'good', threshold: 5, aliases: ['집중하고 싶음'] },
+      // extra: 처음 설치할 땐 넣지 않고, '기본 불러오기'에서 골라서 추가한다
+      { id: uid(), name: '폰 보고 싶은 마음', emoji: '📱', color: '#FFB38A', direction: 'bad', threshold: 5, extra: true, desc: '알림·쇼츠가 자꾸 떠오르는 정도' },
+      { id: uid(), name: '잡생각', emoji: '🌀', color: '#B5B9FF', direction: 'bad', threshold: 5, extra: true, desc: '딴생각이 계속 끼어드는 정도' },
+      { id: uid(), name: '불안·긴장', emoji: '😰', color: '#B5B9FF', direction: 'bad', threshold: 5, extra: true, aliases: ['불안함'], desc: '각성이 너무 높아 들뜬 상태' },
+      { id: uid(), name: '짜증', emoji: '😤', color: '#FF9AA2', direction: 'bad', threshold: 5, extra: true, desc: '예민하고 날이 선 정도' },
+      { id: uid(), name: '졸림', emoji: '😪', color: '#C9B6A6', direction: 'bad', threshold: 5, extra: true, desc: '각성이 너무 낮아 처지는 상태' },
+      { id: uid(), name: '지루함', emoji: '🥱', color: '#FFD97A', direction: 'bad', threshold: 5, extra: true, desc: '공부가 재미없고 따분한 정도' },
+      { id: uid(), name: '의욕', emoji: '🔥', color: '#FFB38A', direction: 'good', threshold: 5, extra: true, desc: '해 보고 싶은 마음이 얼마나 있는지' },
+      { id: uid(), name: '자신감', emoji: '💪', color: '#8EC5FF', direction: 'good', threshold: 5, extra: true, desc: '오늘 할 걸 해낼 수 있을 것 같은 느낌' },
+      { id: uid(), name: '차분함', emoji: '🍃', color: '#9ED9B5', direction: 'good', threshold: 5, extra: true, desc: '마음이 가라앉아 안정된 정도' },
     ],
     categories: [breath, body, sense, env, mind, routine, rest, sound],
     actions: [
@@ -149,13 +159,20 @@ function persist() {
   adapter.save(data).catch((err) => console.error('저장 실패', err));
 }
 
-const stripAliases = ({ aliases, ...item }) => item;
+// 기본값 설명용 필드는 실제 데이터에 저장하지 않는다
+const stripAliases = ({ aliases, extra, desc, ...item }) => item;
 const namesOf = (item) => [item.name, ...(item.aliases || [])];
 
 function freshData() {
   const d = createDefaults();
-  for (const k of COLLECTIONS) d[k] = d[k].map(stripAliases);
+  for (const k of COLLECTIONS) d[k] = d[k].filter((x) => !x.extra).map(stripAliases);
   return d;
+}
+
+// 아직 없는 기본 항목 (설명·extra 표시 포함, 고르는 화면용)
+export function missingDefaults(col) {
+  const names = new Set(data[col].map((x) => x.name));
+  return createDefaults()[col].filter((item) => !namesOf(item).some((n) => names.has(n)));
 }
 
 export async function init() {
@@ -267,12 +284,14 @@ export function setDayFactors(day, values) {
 
 // ---------- 기본 항목 불러오기 ----------
 // 이름이 같은 항목은 건너뛰고, 없는 기본 항목만 추가한다
-export function addMissingDefaults(col) {
+// only: 이 이름들만 추가 (없으면 전부)
+export function addMissingDefaults(col, only) {
   const tpl = createDefaults();
   const names = new Set(data[col].map((x) => x.name));
   let added = 0;
   for (const item of tpl[col]) {
     if (namesOf(item).some((n) => names.has(n))) continue;
+    if (only && !only.includes(item.name)) continue;
     const copy = { ...stripAliases(item), id: uid() };
     if (col === 'actions') {
       // 예전 이름의 카테고리가 있으면 그 카테고리에 넣는다
