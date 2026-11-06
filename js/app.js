@@ -319,12 +319,11 @@ function factorInputs(factors, values) {
           <div class="slider-line"><span>0</span><input type="range" min="0" max="10" step="1" value="${v === '' ? 5 : v}" data-gauge="factor-${f.id}" aria-label="${esc(f.name)}"><span>10</span></div>
           <input type="hidden" name="factor-${f.id}" value="${v}">
         </div>`;
+      // 시각은 버튼으로 된 선택칸이라 label로 감싸지 않는다 (라벨을 누르면 첫 버튼이 눌리는 것 방지)
+      if (f.type === 'time')
+        return `<div class="field"><span>${f.emoji} ${esc(f.name)}</span>${timeSelect(`factor-${f.id}`, v)}</div>`;
       return `<label class="field"><span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''}</span>
-        ${
-          f.type === 'time'
-            ? timeSelect(`factor-${f.id}`, v)
-            : `<input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${v}">`
-        }</label>`;
+        <input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${v}"></label>`;
     })
     .join('');
   const bools = factors.filter((f) => f.type === 'bool');
@@ -339,14 +338,28 @@ function factorInputs(factors, values) {
 // 시각 고르기: 오전/오후 · 시 · 분(15분 단위)을 가로로
 // 잠드는 시간이 주로 밤 10시~새벽 2시라, 오후는 11시부터 내려가고 오전은 12시부터 올라가게 보여 준다
 const pad2 = (n) => String(n).padStart(2, '0');
-function hourOptions(ap, selected) {
-  const hours = ap === 'am' ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 12];
-  return `<option value="">시</option>${hours
-    .map((h) => `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}시</option>`)
-    .join('')}`;
+const hourList = (ap) => (ap === 'am' ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 12]);
+
+// 앱 디자인에 맞춘 선택칸 (기본 select 목록은 꾸밀 수 없어서 직접 만든다)
+function tselOptions(options, value) {
+  return options
+    .map(([v, label]) => `<button type="button" class="tsel-opt ${String(v) === String(value) ? 'on' : ''}" data-act="tsel-pick" data-id="${v}">${label}</button>`)
+    .join('');
 }
+function tsel(name, kind, options, value, placeholder) {
+  const cur = options.find(([v]) => String(v) === String(value));
+  return `<div class="tsel" data-kind="${kind}">
+    <button type="button" class="tsel-btn ${cur ? '' : 'empty'}" data-act="tsel-open" aria-haspopup="listbox">
+      <span class="tsel-val">${cur ? cur[1] : placeholder}</span><span class="tsel-arrow">▾</span>
+    </button>
+    <input type="hidden" name="${name}" value="${cur ? cur[0] : ''}">
+    <div class="tsel-menu" data-placeholder="${placeholder}" hidden>${tselOptions(options, value)}</div>
+  </div>`;
+}
+const hourOpts = (ap) => hourList(ap).map((h) => [h, `${h}시`]);
+
 function timeSelect(name, value) {
-  let ap = 'pm', h12 = null, m = 0;
+  let ap = 'pm', h12 = '', m = 0;
   if (value) {
     const [vh, vm] = value.split(':').map(Number);
     const total = (Math.round((vh * 60 + vm) / 15) * 15) % 1440; // 15분 단위로 맞춤
@@ -355,16 +368,25 @@ function timeSelect(name, value) {
     ap = h24 < 12 ? 'am' : 'pm';
     h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   }
-  return `<span class="time-select">
-    <select name="${name}-ap" data-ampm aria-label="오전 오후">
-      <option value="pm" ${ap === 'pm' ? 'selected' : ''}>오후</option>
-      <option value="am" ${ap === 'am' ? 'selected' : ''}>오전</option>
-    </select>
-    <select name="${name}-h" aria-label="시">${hourOptions(ap, h12)}</select>
-    <select name="${name}-m" aria-label="분">
-      ${[0, 15, 30, 45].map((x) => `<option value="${pad2(x)}" ${x === m ? 'selected' : ''}>${pad2(x)}분</option>`).join('')}
-    </select>
-  </span>`;
+  return `<div class="time-select">
+    ${tsel(`${name}-ap`, 'ap', [['pm', '오후'], ['am', '오전']], ap, '오후')}
+    ${tsel(`${name}-h`, 'h', hourOpts(ap), h12, '시')}
+    ${tsel(`${name}-m`, 'm', [0, 15, 30, 45].map((x) => [pad2(x), `${pad2(x)}분`]), pad2(m), '분')}
+  </div>`;
+}
+
+function closeTsels(except) {
+  for (const t of document.querySelectorAll('.tsel.open')) {
+    if (t === except) continue;
+    t.classList.remove('open');
+    t.querySelector('.tsel-menu').hidden = true;
+  }
+}
+function setTsel(t, value, label) {
+  t.querySelector('input').value = value;
+  t.querySelector('.tsel-val').textContent = label;
+  t.querySelector('.tsel-btn').classList.toggle('empty', value === '');
+  for (const o of t.querySelectorAll('.tsel-opt')) o.classList.toggle('on', o.dataset.id === String(value));
 }
 
 function readFactors(fd, factors) {
@@ -1048,6 +1070,25 @@ const handlers = {
   'picker-close': () => closePickers(),
   'picker-add': (_, el) => addFromSearch(el.closest('.picker')),
   'edit-factor': factorSheet,
+  'tsel-open': (_, el) => {
+    const t = el.closest('.tsel');
+    const open = !t.classList.contains('open');
+    t.classList.toggle('open', open);
+    const menu = t.querySelector('.tsel-menu');
+    menu.hidden = !open;
+    if (open) menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  },
+  'tsel-pick': (value, el) => {
+    const t = el.closest('.tsel');
+    setTsel(t, value, el.textContent);
+    closeTsels();
+    if (t.dataset.kind === 'ap') {
+      // 오전/오후를 바꾸면 고른 시는 그대로 두고 순서만 바꾼다
+      const hour = t.parentElement.querySelector('.tsel[data-kind=h]');
+      const hv = hour.querySelector('input').value;
+      hour.querySelector('.tsel-menu').innerHTML = tselOptions(hourOpts(value), hv);
+    }
+  },
   'add-day-factor': () => {
     // 적던 값이 사라지지 않게 잠깐 보관해 둔다
     const form = document.getElementById('sleep-form');
@@ -1078,6 +1119,7 @@ const handlers = {
 document.addEventListener('click', (e) => {
   // 검색 목록 바깥을 누르면 목록을 닫는다
   closePickers(e.target.closest('.picker'));
+  closeTsels(e.target.closest('.tsel'));
   const t = e.target.closest('[data-act]');
   if (!t) return;
   handlers[t.dataset.act]?.(t.dataset.id || undefined, t);
@@ -1127,11 +1169,6 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   if (e.target.id === 'import-file') importData(e.target);
   if (e.target.closest('.picker-list')) refreshPicker(e.target.closest('.picker'));
-  if (e.target.matches('[data-ampm]')) {
-    // 오전/오후를 바꾸면 고른 시는 그대로 두고 순서만 바꾼다
-    const hour = e.target.parentElement.querySelector('select[name$="-h"]');
-    hour.innerHTML = hourOptions(e.target.value, Number(hour.value) || null);
-  }
 });
 
 document.addEventListener('submit', (e) => {
