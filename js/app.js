@@ -336,20 +336,33 @@ function factorInputs(factors, values) {
   return nums + chips;
 }
 
-// 시각 고르기: 시는 저녁 6시부터 다음 날 오후까지 순서대로, 분은 15분 단위
+// 시각 고르기: 오전/오후 · 시 · 분(15분 단위)을 가로로
+// 잠드는 시간이 주로 밤 10시~새벽 2시라, 오후는 11시부터 내려가고 오전은 12시부터 올라가게 보여 준다
+const pad2 = (n) => String(n).padStart(2, '0');
+function hourOptions(ap, selected) {
+  const hours = ap === 'am' ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 12];
+  return `<option value="">시</option>${hours
+    .map((h) => `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}시</option>`)
+    .join('')}`;
+}
 function timeSelect(name, value) {
-  const [vh, vm] = value ? value.split(':').map(Number) : [null, null];
-  const m15 = vm == null ? null : (Math.round(vm / 15) * 15) % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  const hourLabel = (h) => `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}시`;
-  const hours = [...Array(24)].map((_, i) => (i + 18) % 24);
+  let ap = 'pm', h12 = null, m = 0;
+  if (value) {
+    const [vh, vm] = value.split(':').map(Number);
+    const total = (Math.round((vh * 60 + vm) / 15) * 15) % 1440; // 15분 단위로 맞춤
+    const h24 = Math.floor(total / 60);
+    m = total % 60;
+    ap = h24 < 12 ? 'am' : 'pm';
+    h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  }
   return `<span class="time-select">
-    <select name="${name}-h" aria-label="시">
-      <option value="">시 선택</option>
-      ${hours.map((h) => `<option value="${pad(h)}" ${h === vh ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}
+    <select name="${name}-ap" data-ampm aria-label="오전 오후">
+      <option value="pm" ${ap === 'pm' ? 'selected' : ''}>오후</option>
+      <option value="am" ${ap === 'am' ? 'selected' : ''}>오전</option>
     </select>
+    <select name="${name}-h" aria-label="시">${hourOptions(ap, h12)}</select>
     <select name="${name}-m" aria-label="분">
-      ${[0, 15, 30, 45].map((m) => `<option value="${pad(m)}" ${m === m15 ? 'selected' : ''}>${pad(m)}분</option>`).join('')}
+      ${[0, 15, 30, 45].map((x) => `<option value="${pad2(x)}" ${x === m ? 'selected' : ''}>${pad2(x)}분</option>`).join('')}
     </select>
   </span>`;
 }
@@ -360,8 +373,9 @@ function readFactors(fd, factors) {
     const v = fd.get(`factor-${f.id}`);
     if (f.type === 'bool') out[f.id] = v !== null; // 체크박스는 선택됐을 때만 값이 온다
     else if (f.type === 'time') {
-      const h = fd.get(`factor-${f.id}-h`);
-      out[f.id] = h ? `${h}:${fd.get(`factor-${f.id}-m`) || '00'}` : null;
+      const h = Number(fd.get(`factor-${f.id}-h`));
+      const pm = fd.get(`factor-${f.id}-ap`) === 'pm';
+      out[f.id] = h ? `${pad2((h % 12) + (pm ? 12 : 0))}:${fd.get(`factor-${f.id}-m`) || '00'}` : null;
     }
     else if (v === '' || v === null) out[f.id] = null;
     else out[f.id] = Number(v);
@@ -1113,6 +1127,11 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   if (e.target.id === 'import-file') importData(e.target);
   if (e.target.closest('.picker-list')) refreshPicker(e.target.closest('.picker'));
+  if (e.target.matches('[data-ampm]')) {
+    // 오전/오후를 바꾸면 고른 시는 그대로 두고 순서만 바꾼다
+    const hour = e.target.parentElement.querySelector('select[name$="-h"]');
+    hour.innerHTML = hourOptions(e.target.value, Number(hour.value) || null);
+  }
 });
 
 document.addEventListener('submit', (e) => {
