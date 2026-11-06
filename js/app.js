@@ -322,7 +322,7 @@ function factorInputs(factors, values) {
       return `<label class="field"><span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''}</span>
         ${
           f.type === 'time'
-            ? `<span class="time-wrap"><input type="time" name="factor-${f.id}" value="${v}"></span>`
+            ? timeSelect(`factor-${f.id}`, v)
             : `<input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${v}">`
         }</label>`;
     })
@@ -336,13 +336,35 @@ function factorInputs(factors, values) {
   return nums + chips;
 }
 
+// 시각 고르기: 시는 저녁 6시부터 다음 날 오후까지 순서대로, 분은 15분 단위
+function timeSelect(name, value) {
+  const [vh, vm] = value ? value.split(':').map(Number) : [null, null];
+  const m15 = vm == null ? null : (Math.round(vm / 15) * 15) % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  const hourLabel = (h) => `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}시`;
+  const hours = [...Array(24)].map((_, i) => (i + 18) % 24);
+  return `<span class="time-select">
+    <select name="${name}-h" aria-label="시">
+      <option value="">시 선택</option>
+      ${hours.map((h) => `<option value="${pad(h)}" ${h === vh ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}
+    </select>
+    <select name="${name}-m" aria-label="분">
+      ${[0, 15, 30, 45].map((m) => `<option value="${pad(m)}" ${m === m15 ? 'selected' : ''}>${pad(m)}분</option>`).join('')}
+    </select>
+  </span>`;
+}
+
 function readFactors(fd, factors) {
   const out = {};
   for (const f of factors) {
     const v = fd.get(`factor-${f.id}`);
     if (f.type === 'bool') out[f.id] = v !== null; // 체크박스는 선택됐을 때만 값이 온다
+    else if (f.type === 'time') {
+      const h = fd.get(`factor-${f.id}-h`);
+      out[f.id] = h ? `${h}:${fd.get(`factor-${f.id}-m`) || '00'}` : null;
+    }
     else if (v === '' || v === null) out[f.id] = null;
-    else out[f.id] = f.type === 'time' ? v : Number(v);
+    else out[f.id] = Number(v);
   }
   return out;
 }

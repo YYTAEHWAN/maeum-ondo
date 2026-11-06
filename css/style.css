@@ -369,3 +369,8 @@ input[type="time"]:invalid, input[type="time"][value=""] { color: var(--muted); 
 input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.45; cursor: pointer; }
 input[type="time"]::-webkit-date-and-time-value { text-align: left; }
 .add-day-item { display: block; margin: 4px 0 14px; }
+
+.time-select { display: flex; gap: 8px; }
+.time-select select:first-child { flex: 3; }
+.time-select select:last-child { flex: 2; }
+.time-select select { font-size: 16px; font-weight: 700; color: var(--ink); min-height: 48px; }
