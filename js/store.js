@@ -18,29 +18,37 @@ export const dayKey = (v) => {
 function defaultFactors() {
   const fac = (name, emoji, type, scope, unit = '') => ({ id: uid(), name, emoji, type, scope, unit });
   return [
+    // 체크할 때마다: 연료(식사·물·카페인)와 누적 피로
     fac('마지막 식사 후', '🍚', 'number', 'check', '시간'),
     fac('배부름 (0~10)', '🍽️', 'number', 'check', '점'),
     fac('커피·카페인', '☕', 'number', 'check', '잔'),
+    fac('오늘 마신 물', '💧', 'number', 'check', '잔'),
+    fac('마지막 휴식 후', '⏱️', 'number', 'check', '분'),
+    // 하루 한 번: 회복과 생체리듬
+    fac('잠의 질 (0~10)', '🌙', 'number', 'day', '점'),
     fac('낮잠', '😴', 'bool', 'day'),
     fac('운동', '🏃', 'bool', 'day'),
+    fac('아침 햇볕 쬐기', '☀️', 'bool', 'day'),
   ];
 }
 
+// 뇌과학(각성 조절·도파민·자율신경)과 스포츠 코칭(루틴·회복·부하 관리) 관점의 기본값
+// aliases: 예전 기본 이름. '기본 불러오기' 때 같은 항목으로 보고 건너뛴다
 function createDefaults() {
-  const cat = (name, emoji) => ({ id: uid(), name, emoji });
-  const breath = cat('호흡', '🫁');
-  const body = cat('몸 움직이기', '🚶');
-  const sense = cat('감각 깨우기', '💧');
-  const env = cat('환경 바꾸기', '📵');
+  const cat = (name, emoji, aliases) => ({ id: uid(), name, emoji, aliases });
+  const breath = cat('호흡 조절', '🫁', ['호흡']);
+  const body = cat('몸 깨우기', '🏃', ['몸 움직이기']);
+  const sense = cat('감각 리셋', '🧊', ['감각 깨우기']);
+  const env = cat('환경 설계', '🚪', ['환경 바꾸기']);
   const mind = cat('생각 정리', '📝');
-  const rest = cat('휴식', '🛋️');
+  const routine = cat('시작 루틴', '🏁');
+  const rest = cat('회복·휴식', '🔋', ['휴식']);
   const sound = cat('소리·음악', '🎧');
-  const act = (name, emoji, c) => ({ id: uid(), name, emoji, categoryId: c.id });
+  const act = (name, emoji, c, aliases) => ({ id: uid(), name, emoji, categoryId: c.id, aliases });
   const trig = (name, emoji) => ({ id: uid(), name, emoji });
 
   return {
     version: 1,
-    // aliases: 예전 기본 이름. '기본 불러오기' 때 같은 항목으로 보고 건너뛴다
     emotions: [
       { id: uid(), name: '남은 체력', emoji: '🔋', color: '#8EC5FF', direction: 'good', threshold: 5 },
       { id: uid(), name: '남은 정신력', emoji: '🧠', color: '#E3A6FF', direction: 'good', threshold: 5 },
@@ -48,39 +56,68 @@ function createDefaults() {
       { id: uid(), name: '미루고 싶은 마음', emoji: '🐢', color: '#C9B6A6', direction: 'bad', threshold: 5 },
       { id: uid(), name: '집중하고 싶은 마음', emoji: '🎯', color: '#9ED9B5', direction: 'good', threshold: 5, aliases: ['집중하고 싶음'] },
     ],
-    categories: [breath, body, sense, env, mind, rest, sound],
+    categories: [breath, body, sense, env, mind, routine, rest, sound],
     actions: [
+      // 날숨을 길게 → 부교감신경, 가장 빨리 가라앉는 방법들
+      act('생리적 한숨 3번 (들숨 두 번 + 긴 날숨)', '😮‍💨', breath),
       act('4-7-8 호흡', '🌬️', breath),
-      act('눈 감고 심호흡 1분', '😌', breath),
       act('박스 호흡 (4-4-4-4)', '🔲', breath),
-      act('산책', '🚶', body),
+      act('날숨 길게 1분 (4초 들숨 · 8초 날숨)', '🍃', breath, ['눈 감고 심호흡 1분']),
+      // 무기력·졸림 → 각성 올리기
+      act('산책 10분', '🚶', body, ['산책']),
       act('스트레칭', '🤸', body),
       act('제자리 뛰기 30초', '🏃', body),
+      act('스쿼트 15개', '🦵', body),
+      // 감각 자극으로 상태 전환
       act('찬물 세수', '💦', sense),
       act('물 한 잔 마시기', '🥤', sense),
+      act('창밖 멀리 20초 보기', '🪟', sense),
       act('양치하기', '🪥', sense),
+      // 의지력 대신 환경으로 유혹 차단
       act('폰 다른 방에 두기', '📵', env),
-      act('책상 정리', '🧹', env),
+      act('방해 앱 차단 켜기', '🔒', env),
+      act('책상 위 공부 책만 남기기', '🧹', env, ['책상 정리']),
       act('공부 장소 옮기기', '🚪', env),
-      act('타이머 25분 맞추기', '⏲️', env),
-      act('떠오르는 생각 적기', '📝', mind),
-      act('오늘 할 일 3개 쓰기', '✅', mind),
+      // 작업 기억 비우기
+      act('떠오르는 생각 다 적기', '📝', mind, ['떠오르는 생각 적기']),
       act('걱정 적고 덮어두기', '🗒️', mind),
+      act('오늘 할 일 3개 쓰기', '✅', mind),
+      // 선수들의 경기 전 루틴처럼 시작을 자동화
+      act('첫 할 일 2분짜리로 쪼개기', '✂️', routine),
+      act('딱 5분만 하기로 약속', '⏳', routine),
+      act('잘 풀리는 장면 30초 떠올리기', '🎬', routine),
+      act('타이머 25분 맞추기', '⏲️', routine),
+      act('나만의 시작 루틴 하기', '🏁', routine),
+      // 연료가 바닥났을 때
       act('눈 감고 5분 쉬기', '😪', rest),
+      act('파워냅 20분', '💤', rest),
+      act('누워서 몸 이완 10분 (NSDR)', '🧘', rest),
+      act('간단한 간식 먹기', '🍌', rest),
+      act('가사 없는 음악 틀기', '🎼', sound),
       act('백색소음 틀기', '🌧️', sound),
       act('좋아하는 노래 한 곡 듣기', '🎵', sound),
     ],
     triggers: [
+      // 고자극 콘텐츠 → 공부가 상대적으로 지루해짐
       trig('유튜브 본 직후', '📺'),
+      trig('쇼츠·릴스 본 직후', '⚡'),
       trig('SNS 하고 나서', '📱'),
       trig('게임 하고 나서', '🎮'),
-      trig('밥 먹은 후', '🍚'),
-      trig('피곤함', '😪'),
       trig('연락 받음', '💬'),
       trig('친구와 놀고 옴', '🧑‍🤝‍🧑'),
+      // 몸 상태
+      trig('밥 먹은 후', '🍚'),
+      trig('배고픔', '🍽️'),
+      trig('피곤함', '😪'),
+      trig('오래 앉아 있었음', '🪑'),
+      // 과제가 주는 부담
+      trig('어디서부터 할지 모르겠음', '🌫️'),
       trig('공부가 막힘', '🧱'),
       trig('공부할 양이 많음', '📚'),
       trig('시험·마감 다가옴', '⏰'),
+      trig('결과가 안 좋았음', '📉'),
+      trig('남과 비교함', '👀'),
+      // 그 밖의 스트레스
       trig('잔소리·다툼', '💢'),
       trig('날씨 탓', '🌧️'),
       trig('그냥 이유 없이', '🌀'),
@@ -112,9 +149,12 @@ function persist() {
   adapter.save(data).catch((err) => console.error('저장 실패', err));
 }
 
+const stripAliases = ({ aliases, ...item }) => item;
+const namesOf = (item) => [item.name, ...(item.aliases || [])];
+
 function freshData() {
   const d = createDefaults();
-  d.emotions = d.emotions.map(({ aliases, ...e }) => e);
+  for (const k of COLLECTIONS) d[k] = d[k].map(stripAliases);
   return d;
 }
 
@@ -231,14 +271,15 @@ export function addMissingDefaults(col) {
   const tpl = createDefaults();
   const names = new Set(data[col].map((x) => x.name));
   let added = 0;
-  for (const { aliases = [], ...item } of tpl[col]) {
-    if ([item.name, ...aliases].some((n) => names.has(n))) continue;
-    const copy = { ...item, id: uid() };
+  for (const item of tpl[col]) {
+    if (namesOf(item).some((n) => names.has(n))) continue;
+    const copy = { ...stripAliases(item), id: uid() };
     if (col === 'actions') {
+      // 예전 이름의 카테고리가 있으면 그 카테고리에 넣는다
       const tplCat = tpl.categories.find((c) => c.id === item.categoryId);
-      let cat = data.categories.find((c) => c.name === tplCat.name);
+      let cat = data.categories.find((c) => namesOf(tplCat).includes(c.name));
       if (!cat) {
-        cat = { ...tplCat, id: uid() };
+        cat = { ...stripAliases(tplCat), id: uid() };
         data.categories.push(cat);
       }
       copy.categoryId = cat.id;
