@@ -105,16 +105,38 @@ export function byTrigger(d, emo = 'all') {
     .sort((a, b) => b.avg - a.avg);
 }
 
-export function byCondition(d, emo = 'all') {
-  const sleep = (c) => d.sleepLog?.[dayKey(c.at)] ?? c.sleep ?? null;
-  return groupBadness(d, emo, [
-    ['😫 컨디션 나쁨', (c) => c.condition != null && c.condition <= 2],
-    ['🙂 컨디션 보통', (c) => c.condition === 3],
-    ['😊 컨디션 좋음', (c) => c.condition != null && c.condition >= 4],
-    ['🥱 잠 6시간 미만', (c) => sleep(c) != null && sleep(c) < 6],
-    ['😴 잠 6시간 이상', (c) => sleep(c) != null && sleep(c) >= 6],
-  ]).filter((g) => g.n);
+// 기울기: x가 1 오를 때 흔들림이 얼마나 변하는지 (데이터 3개 이상, x가 다양할 때만)
+function slope(points) {
+  if (points.length < 3) return null;
+  const mx = mean(points.map((p) => p[0]));
+  const my = mean(points.map((p) => p[1]));
+  const sxx = points.reduce((s, [x]) => s + (x - mx) ** 2, 0);
+  if (!sxx) return null;
+  return points.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0) / sxx;
 }
+
+// 값(x)별 흔들림 평균 + 기울기
+function byNumber(d, emo, valueOf, labelOf) {
+  const points = naturalCheckins(d)
+    .map((c) => [valueOf(c), checkinBadness(d, c, emo)])
+    .filter(([x, y]) => x != null && y != null);
+  const groups = new Map();
+  for (const [x, y] of points) groups.set(x, [...(groups.get(x) || []), y]);
+  const rows = [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([x, ys]) => ({ label: labelOf(x), n: ys.length, avg: mean(ys) }));
+  return { rows, slope: slope(points), n: points.length };
+}
+
+// 자동으로 채워진 컨디션은 마음 점수에서 나온 값이라 분석에서 뺀다
+export const byConditionScore = (d, emo = 'all') =>
+  byNumber(d, emo, (c) => (c.condition != null && !c.conditionAuto ? c.condition : null), (x) => `🌡️ ${x}점`);
+
+export const bySleep = (d, emo = 'all') =>
+  byNumber(d, emo, (c) => {
+    const s = d.sleepLog?.[dayKey(c.at)] ?? c.sleep ?? null;
+    return s == null ? null : Math.round(s);
+  }, (x) => `🛌 ${x}시간`);
 
 export function byTimeSlot(d, emo = 'all') {
   const hour = (c) => new Date(c.at).getHours();

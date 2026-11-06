@@ -21,13 +21,8 @@ const fmtDate = (v) => {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;
 };
 const dayKey = store.dayKey;
-const CONDITIONS = [
-  [1, '😫', '최악'],
-  [2, '😕', '별로'],
-  [3, '🙂', '보통'],
-  [4, '😊', '좋음'],
-  [5, '🤩', '최고'],
-];
+const AUTO_HINT = '마음 점수로 자동 계산 중';
+const MANUAL_HINT = '직접 정했어요';
 const byAtDesc = (a, b) => b.at.localeCompare(a.at);
 const fmtImp = (n) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
 const impText = (n) => (n > 0 ? `${n.toFixed(1)}점 좋아졌어요` : n < 0 ? `${(-n).toFixed(1)}점 나빠졌어요` : '변화 없었어요');
@@ -188,6 +183,10 @@ function viewCheck() {
     .join('');
 
   const triggerIds = base?.triggerIds || [];
+  const conditionAuto = base?.condition == null || base.conditionAuto === true;
+  const conditionValue = conditionAuto
+    ? autoCondition(Object.fromEntries(d.emotions.map((e) => [e.id, base?.scores[e.id] ?? 5])))
+    : base.condition;
   const context = isAfter
     ? ''
     : `<h3 class="sec">어떤 상황이었나요? <span class="muted">여러 개 골라도 돼요</span></h3>
@@ -196,10 +195,9 @@ function viewCheck() {
         .join('')}</div>
       <button type="button" class="btn sm ghost" data-act="quick-trigger">＋ 새 상황</button>
       <h3 class="sec">오늘 컨디션은 전체적으로 어때요?</h3>
-      <div class="conds">${CONDITIONS.map(
-        ([v, emoji, label]) => `<label class="cond"><input type="radio" name="condition" value="${v}" ${base?.condition === v ? 'checked' : ''}>
-          <span class="e">${emoji}</span><span>${label}</span></label>`
-      ).join('')}</div>`;
+      <p class="muted">마음 점수에 맞춰 자동으로 채워져요. 다르면 직접 옮겨 주세요.</p>
+      ${slider('condition', '🌡️ 컨디션', conditionValue, '#FFC46B', conditionAuto ? AUTO_HINT : MANUAL_HINT)}
+      <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">`;
 
   return `<header class="top">
       <button class="back" data-act="back">‹ 돌아가기</button>
@@ -215,6 +213,27 @@ function viewCheck() {
     </form>`;
 }
 
+// 마음 점수 평균을 "높을수록 좋음" 방향으로 맞춘 값 (예: 놀고 싶음 8 → 2로 계산)
+function autoCondition(scores) {
+  const vals = store
+    .get()
+    .emotions.filter((e) => scores[e.id] != null)
+    .map((e) => 10 - stats.badness(e, scores[e.id]));
+  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 5;
+}
+
+function syncAutoCondition(form) {
+  const cond = form.querySelector('[name=condition]');
+  if (!cond || form.conditionAuto.value !== '1') return;
+  const scores = {};
+  for (const e of store.get().emotions) {
+    const input = form.querySelector(`[name="score-${e.id}"]`);
+    if (input) scores[e.id] = Number(input.value);
+  }
+  cond.value = autoCondition(scores);
+  cond.closest('.slider-row').querySelector('.val').textContent = cond.value;
+}
+
 function submitCheck(form) {
   const fd = new FormData(form);
   const scores = {};
@@ -225,8 +244,8 @@ function submitCheck(form) {
   const fields = { scores, memo: (fd.get('memo') || '').trim() };
   if (form.querySelector('[name=condition]')) {
     fields.triggerIds = fd.getAll('trigger');
-    const cond = fd.get('condition');
-    fields.condition = cond ? Number(cond) : null;
+    fields.condition = Number(fd.get('condition'));
+    fields.conditionAuto = fd.get('conditionAuto') === '1';
   }
 
   const { mode, sessionId, checkinId } = ui.params;
@@ -385,8 +404,7 @@ function viewHistory() {
 
 function conditionLine(c) {
   const parts = [];
-  const cond = CONDITIONS.find(([v]) => v === c.condition);
-  if (cond) parts.push(`${cond[1]} 컨디션 ${cond[2]}`);
+  if (c.condition != null) parts.push(`🌡️ 컨디션 ${c.condition}${c.conditionAuto ? ' (자동)' : ''}`);
   if (c.fatigue != null) parts.push(`😪 피곤함 ${c.fatigue}`);
   const sleep = store.sleepOf(c);
   if (sleep != null) parts.push(`🛌 ${sleep}시간 잠`);
@@ -482,7 +500,16 @@ function viewStats() {
   html += `<section class="card"><h3>🌊 어떤 상황에 마음이 흔들릴까?</h3>
     <p class="muted">흔들림 지수 평균 (0~10, 높을수록 공부하기 어려움)${ov.avgBadness != null ? ` · 평소 ${ov.avgBadness.toFixed(1)}` : ''}</p>
     ${shake(stats.byTrigger(d, emo), '체크할 때 상황을 고르면 여기에 쌓여요')}</section>`;
-  html += `<section class="card"><h3>🌡️ 컨디션·잠과 마음</h3>${shake(stats.byCondition(d, emo))}</section>`;
+  const trend = (r, unit) =>
+    r.slope == null
+      ? `<p class="muted">${r.n ? '값이 더 다양하게 쌓이면 경향을 계산해요' : ''}</p>`
+      : `<p class="trend">${unit}이 1 늘 때 흔들림이 <b>${Math.abs(r.slope).toFixed(1)}점 ${r.slope > 0 ? '올라가요 📈' : '내려가요 📉'}</b> <span class="muted">(${r.n}개 기준)</span></p>`;
+  const cond = stats.byConditionScore(d, emo);
+  html += `<section class="card"><h3>🌡️ 컨디션과 마음</h3>
+    <p class="muted">직접 정한 컨디션만 써요. 자동으로 채워진 값은 마음 점수에서 나온 거라 뺐어요.</p>
+    ${trend(cond, '컨디션')}${shake(cond.rows, '컨디션을 직접 정한 기록이 생기면 보여요')}</section>`;
+  const sleep = stats.bySleep(d, emo);
+  html += `<section class="card"><h3>🛌 잠과 마음</h3>${trend(sleep, '잠 시간')}${shake(sleep.rows, '홈에서 잠 시간을 적으면 보여요')}</section>`;
   html += `<section class="card"><h3>🕰️ 시간대별</h3>${shake(stats.byTimeSlot(d, emo))}</section>`;
   html += `<section class="card"><h3>📅 요일별</h3>${shake(stats.byWeekday(d, emo))}</section>`;
 
@@ -764,7 +791,18 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.matches('[data-slider]')) e.target.closest('.slider-row').querySelector('.val').textContent = e.target.value;
+  if (!e.target.matches('[data-slider]')) return;
+  const row = e.target.closest('.slider-row');
+  row.querySelector('.val').textContent = e.target.value;
+  const form = e.target.form;
+  if (form?.id !== 'check-form') return;
+  if (e.target.name === 'condition') {
+    // 한 번 직접 옮기면 그 뒤로는 자동 계산하지 않는다
+    form.conditionAuto.value = '0';
+    row.querySelector('.slider-foot span:nth-child(2)').textContent = MANUAL_HINT;
+  } else {
+    syncAutoCondition(form);
+  }
 });
 
 document.addEventListener('change', (e) => {

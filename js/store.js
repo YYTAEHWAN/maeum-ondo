@@ -57,6 +57,7 @@ function createDefaults() {
     checkins: [],
     sessions: [],
     sleepLog: {},
+    conditionScale: 10,
   };
 }
 
@@ -64,6 +65,11 @@ function normalize() {
   data.version ||= 1;
   for (const k of COLLECTIONS) if (!Array.isArray(data[k])) data[k] = [];
   if (!data.sleepLog || typeof data.sleepLog !== 'object') data.sleepLog = {};
+  // 컨디션이 5단계(1~5)였던 기록을 0~10점으로 옮긴다
+  if (data.conditionScale !== 10) {
+    for (const c of data.checkins) if (c.condition != null) c.condition = Math.round((c.condition - 1) * 2.5);
+    data.conditionScale = 10;
+  }
 }
 
 function persist() {
