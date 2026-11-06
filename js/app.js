@@ -194,7 +194,7 @@ function viewCheck() {
         .map((t) => `<label class="chip"><input type="checkbox" name="trigger" value="${t.id}" ${triggerIds.includes(t.id) ? 'checked' : ''}>${t.emoji} ${esc(t.name)}</label>`)
         .join('')}</div>
       <button type="button" class="btn sm ghost" data-act="quick-trigger">＋ 새 상황</button>
-      <h3 class="sec">오늘 컨디션은 전체적으로 어때요?</h3>
+      <h3 class="sec">지금 컨디션은 전체적으로 어때요?</h3>
       <p class="muted">마음 점수에 맞춰 자동으로 채워져요. 다르면 직접 옮겨 주세요.</p>
       ${slider('condition', '🌡️ 컨디션', conditionValue, '#FFC46B', conditionAuto ? AUTO_HINT : MANUAL_HINT)}
       <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">`;
