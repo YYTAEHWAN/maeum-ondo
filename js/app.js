@@ -21,8 +21,6 @@ const fmtDate = (v) => {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;
 };
 const dayKey = store.dayKey;
-const AUTO_HINT = '마음 점수로 자동 계산 중';
-const MANUAL_HINT = '직접 정했어요';
 const byAtDesc = (a, b) => b.at.localeCompare(a.at);
 const fmtImp = (n) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
 const impText = (n) => (n > 0 ? `${n.toFixed(1)}점 좋아졌어요` : n < 0 ? `${(-n).toFixed(1)}점 나빠졌어요` : '변화 없었어요');
@@ -68,7 +66,10 @@ const triggerChips = (c) =>
   (c.triggerIds || [])
     .map((id) => store.find('triggers', id))
     .filter(Boolean)
-    .map((t) => `<span class="chip">${t.emoji} ${esc(t.name)}</span>`)
+    .map((t) => {
+      const v = c.triggerValues?.[t.id];
+      return `<span class="chip">${t.emoji} ${esc(t.name)}${v != null ? ` <b>${v}</b>${esc(t.unit || '')}` : ''}</span>`;
+    })
     .join('');
 const emptyBox = (emoji, text) => `<div class="empty"><div class="big">${emoji}</div><p>${text}</p></div>`;
 
@@ -98,14 +99,14 @@ function viewHome() {
   let html = `<header class="top"><p class="muted">${fmtDate(now)}</p><h1>${greet}</h1></header>`;
 
   const sleep = store.getSleep(today);
-  const dayFactors = d.factors.filter((f) => f.scope === 'day');
+  const dayFactors = d.factors;
   const dayValues = store.getDay(today);
   html +=
     sleep == null || ui.editingSleep
       ? `<form id="sleep-form" class="card sleep">
-          <h3>🌙 오늘의 기본 기록</h3>
-          <p class="muted">하루에 한 번만 적으면 돼요. 낮잠·운동은 나중에 수정해도 돼요.</p>
-          <label class="field"><span>🛌 어젯밤 잔 시간</span>
+          <h3>🌙 어제 기록</h3>
+          <p class="muted">하루에 한 번만 적으면 돼요. 항목은 관리 탭에서 추가할 수 있어요.</p>
+          <label class="field"><span>🛌 수면 시간 (시간)</span>
             <input type="number" name="sleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="예: 6.5" value="${sleep ?? ''}" required>
           </label>
           ${factorInputs(dayFactors, dayValues)}
@@ -113,7 +114,7 @@ function viewHome() {
         </form>`
       : `<section class="card sleep">
           <div class="spread">
-            <span>🛌 어젯밤 <b>${sleep}시간</b> 잤어요</span>
+            <span>🌙 어제 <b>${sleep}시간</b> 잤어요</span>
             <button class="btn sm ghost" data-act="edit-sleep">수정</button>
           </div>
           ${factorChips(dayFactors, dayValues)}
@@ -179,37 +180,30 @@ function viewCheck() {
       <button class="btn primary block" data-act="tab" data-id="manage">관리 탭으로</button></div>`;
   }
 
-  const sliders = d.emotions
-    .map((e) => {
-      const v = base?.scores[e.id] ?? ref?.scores[e.id] ?? 5;
-      const hint = ref && ref.scores[e.id] != null ? `아까 ${ref.scores[e.id]}` : '';
-      return slider(`score-${e.id}`, `${e.emoji} ${esc(e.name)}`, v, e.color, hint);
-    })
-    .join('');
+  const sliderFor = (e) => {
+    const v = base?.scores[e.id] ?? ref?.scores[e.id] ?? 5;
+    const hint = ref && ref.scores[e.id] != null ? `아까 ${ref.scores[e.id]}` : '';
+    return slider(`score-${e.id}`, `${e.emoji} ${esc(e.name)}`, v, e.color, hint);
+  };
+  const body = d.emotions.filter((e) => e.group === 'body');
+  const mind = d.emotions.filter((e) => e.group !== 'body');
 
-  const triggerIds = base?.triggerIds || [];
-  const checkFactors = d.factors.filter((f) => f.scope === 'check');
-  const conditionAuto = base?.condition == null || base.conditionAuto === true;
-  const conditionValue = conditionAuto
-    ? autoCondition(Object.fromEntries(d.emotions.map((e) => [e.id, base?.scores[e.id] ?? 5])))
-    : base.condition;
-  const context = isAfter
-    ? ''
-    : `<h3 class="sec">어떤 상황이었나요? <span class="muted">선택</span></h3>
-      ${picker('trigger', '눌러서 고르거나 검색해요', d.triggers.map((t) => pickItem('trigger', t.id, `${t.emoji} ${esc(t.name)}`, triggerIds.includes(t.id))))}
-      <h3 class="sec">지금 컨디션은 전체적으로 어때요?</h3>
-      <p class="muted">마음 점수에 맞춰 자동으로 채워져요. 다르면 직접 옮겨 주세요.</p>
-      ${slider('condition', '🌡️ 컨디션', conditionValue, '#FFC46B', conditionAuto ? AUTO_HINT : MANUAL_HINT)}
-      <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">
-      ${checkFactors.length ? `<h3 class="sec">컨디션에 영향을 준 것 <span class="muted">선택</span></h3>${factorPicker(checkFactors, base?.factors || {})}` : ''}`;
+  // 순서: 몸 컨디션 → 오늘 있었던 일 → 그로 인한 마음
+  const sections = [
+    body.length ? `<h3 class="sec">🔋 몸 컨디션</h3>${body.map(sliderFor).join('')}` : '',
+    isAfter
+      ? ''
+      : `<h3 class="sec">🌊 오늘 있었던 일 <span class="muted">선택</span></h3>
+        ${triggerPicker(d.triggers, base?.triggerIds || [], base?.triggerValues || {})}`,
+    mind.length ? `<h3 class="sec">💗 마음</h3>${mind.map(sliderFor).join('')}` : '',
+  ];
 
   return `<header class="top">
       <button class="back" data-act="back">‹ 돌아가기</button>
       <h1>${title}</h1><p class="muted">${sub}</p>
     </header>
     <form id="check-form" class="card">
-      ${sliders}
-      ${context}
+      ${sections.join('')}
       <h3 class="sec">📝 메모 <span class="muted">선택</span></h3>
       <textarea name="memo" class="memo-input" placeholder="지금 떠오르는 생각을 적어도 좋아요">${esc(base?.memo || '')}</textarea>
       <button class="btn primary block" type="submit">${mode === 'edit' ? '수정 완료' : '기록하기'}</button>
@@ -230,9 +224,7 @@ function picker(kind, placeholder, items, details = '') {
       <div class="chips picker-list">${items.join('')}</div>
       <p class="muted picker-empty" hidden>찾는 항목이 없어요</p>
       <p class="muted picker-hint">✏️ 없으면 검색칸에 이름을 쓰고 바로 추가할 수 있어요</p>
-      ${(kind === 'trigger' ? ['trigger'] : ['number', 'bool'])
-        .map((type) => `<button type="button" class="btn sm picker-add" data-act="picker-add" data-id="${type}" hidden></button>`)
-        .join('')}
+      <button type="button" class="btn sm picker-add" data-act="picker-add" hidden></button>
       <button type="button" class="btn sm ghost block" data-act="picker-close">닫기</button>
     </div>
   </div>`;
@@ -250,9 +242,9 @@ function selectedChips(itemsOrInputs) {
 
 function refreshPicker(p) {
   p.querySelector('.picker-selected').innerHTML = selectedChips([...p.querySelectorAll('.picker-list input:checked')]);
-  // 숫자 요인은 고른 것만 입력칸을 연다 (안 고른 칸은 disabled라 저장되지 않음)
-  for (const det of p.querySelectorAll('.factor-detail')) {
-    const on = p.querySelector(`input[name="use-${det.dataset.for}"]`).checked;
+  // 숫자를 더 적을 수 있는 항목은 고른 것만 입력칸을 연다 (안 고른 칸은 disabled라 저장되지 않음)
+  for (const det of p.querySelectorAll('.pick-detail')) {
+    const on = p.querySelector(`#${CSS.escape(det.dataset.for)}`).checked;
     det.hidden = !on;
     det.querySelector('input').disabled = !on;
   }
@@ -269,11 +261,9 @@ function filterPicker(p) {
   p.querySelector('.picker-hint').hidden = !!q;
   const raw = p.querySelector('.picker-search').value.trim();
   const exact = [...p.querySelectorAll('.picker-list label')].some((l) => l.dataset.text.toLowerCase().endsWith(` ${q}`));
-  const texts = { trigger: '새 상황으로 추가', number: '숫자로 적는 요인으로 추가', bool: '했어요/안 했어요 요인으로 추가' };
-  for (const btn of p.querySelectorAll('.picker-add')) {
-    btn.hidden = !q || exact;
-    btn.textContent = `＋ "${raw}" ${texts[btn.dataset.id]}`;
-  }
+  const add = p.querySelector('.picker-add');
+  add.hidden = !q || exact;
+  add.textContent = `＋ "${raw}" 새로 추가`;
 }
 
 const openPicker = (p) => (p.querySelector('.picker-panel').hidden = false);
@@ -283,53 +273,48 @@ function closePickers(except) {
 
 // 검색칸에 쓴 이름으로 바로 새 항목을 만든다 (관리 탭에 가지 않아도 되게)
 // 폼을 다시 그리면 입력한 점수가 사라지므로 칩만 끼워 넣는다
-function addFromSearch(p, type) {
+function addFromSearch(p) {
   const search = p.querySelector('.picker-search');
   const name = search.value.trim();
   if (!name) return;
-  const list = p.querySelector('.picker-list');
-  if (p.dataset.kind === 'trigger') {
-    const t = store.upsert('triggers', { name, emoji: '🌊' });
-    list.insertAdjacentHTML('beforeend', pickItem('trigger', t.id, `${t.emoji} ${esc(t.name)}`, true));
-    toast(`"${name}" 상황을 추가했어요`);
-  } else {
-    const f = store.upsert('factors', { name, emoji: '🧩', type, scope: 'check', unit: '' });
-    list.insertAdjacentHTML('beforeend', factorItem(f, true));
-    if (type === 'number') search.insertAdjacentHTML('beforebegin', factorDetail(f, null, true));
-    toast(`"${name}" 요인을 추가했어요. 단위·이모지는 관리 탭에서 바꿀 수 있어요`);
-  }
+  const t = store.upsert('triggers', { name, emoji: '🌊' });
+  p.querySelector('.picker-list').insertAdjacentHTML('beforeend', triggerItem(t, true));
+  toast(`"${name}"을(를) 추가했어요. 숫자를 더 적고 싶으면 관리 탭에서 단위를 정해 주세요`);
   search.value = '';
   filterPicker(p);
   refreshPicker(p);
 }
 
-// 요인은 칩으로 고르고, 숫자 요인은 고르면 값을 적는 칸이 열린다
-const factorItem = (f, checked) =>
-  pickItem(f.type === 'bool' ? `factor-${f.id}` : `use-${f.id}`, f.id, `${f.emoji} ${esc(f.name)}`, checked);
+// 오늘 있었던 일: 칩으로 고르고, 단위가 있는 항목은 고르면 숫자 칸이 열린다
+const triggerItem = (t, checked) => pickItem('trigger', t.id, `${t.emoji} ${esc(t.name)}`, checked);
 
-const factorDetail = (f, value, open) => `<label class="field factor-detail" data-for="${f.id}" ${open ? '' : 'hidden'}>
-    <span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''} <span class="muted">· 비워 둬도 돼요</span></span>
-    <input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${value ?? ''}" ${open ? '' : 'disabled'}>
+const triggerDetail = (t, value, open) => `<label class="pick-detail" data-for="pk-trigger-${t.id}" ${open ? '' : 'hidden'}>
+    <span class="pd-name">${t.emoji} ${esc(t.name)}</span>
+    <input type="number" name="tval-${t.id}" min="0" step="0.5" inputmode="decimal" placeholder="선택" value="${value ?? ''}" ${open ? '' : 'disabled'}>
+    <span class="pd-unit">${esc(t.unit)}</span>
   </label>`;
 
-function factorPicker(factors, values) {
-  const has = (f) => (f.type === 'bool' ? values[f.id] === true : values[f.id] != null);
-  const items = factors.map((f) => factorItem(f, has(f)));
-  const details = factors
-    .filter((f) => f.type === 'number')
-    .map((f) => factorDetail(f, values[f.id], has(f)))
+function triggerPicker(triggers, ids, values) {
+  const items = triggers.map((t) => triggerItem(t, ids.includes(t.id)));
+  const details = triggers
+    .filter((t) => t.detail)
+    .map((t) => triggerDetail(t, values[t.id], ids.includes(t.id)))
     .join('');
-  return picker('factor', '요인 고르거나 검색해요', items, details);
+  return picker('trigger', '눌러서 고르거나 검색해요', items, details);
 }
 
-// ---------- 컨디션 요인 입력 ----------
-// 예/아니오 요인은 칩으로, 숫자 요인은 입력칸으로
+// ---------- 어제 기록 항목 입력 (홈 화면) ----------
+// 숫자·시각은 입력칸으로, 예/아니오는 칩으로
 function factorInputs(factors, values) {
   const nums = factors
-    .filter((f) => f.type === 'number')
+    .filter((f) => f.type !== 'bool')
     .map(
       (f) => `<label class="field"><span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''}</span>
-        <input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${values[f.id] ?? ''}"></label>`
+        ${
+          f.type === 'time'
+            ? `<input type="time" name="factor-${f.id}" value="${values[f.id] ?? ''}">`
+            : `<input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${values[f.id] ?? ''}">`
+        }</label>`
     )
     .join('');
   const bools = factors.filter((f) => f.type === 'bool');
@@ -346,7 +331,8 @@ function readFactors(fd, factors) {
   for (const f of factors) {
     const v = fd.get(`factor-${f.id}`);
     if (f.type === 'bool') out[f.id] = v !== null; // 체크박스는 선택됐을 때만 값이 온다
-    else out[f.id] = v === '' || v === null ? null : Number(v);
+    else if (v === '' || v === null) out[f.id] = null;
+    else out[f.id] = f.type === 'time' ? v : Number(v);
   }
   return out;
 }
@@ -359,27 +345,6 @@ function factorChips(factors, values) {
   return chips ? `<div>${chips}</div>` : '';
 }
 
-// 마음 점수 평균을 "높을수록 좋음" 방향으로 맞춘 값 (예: 놀고 싶음 8 → 2로 계산)
-function autoCondition(scores) {
-  const vals = store
-    .get()
-    .emotions.filter((e) => scores[e.id] != null)
-    .map((e) => 10 - stats.badness(e, scores[e.id]));
-  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 5;
-}
-
-function syncAutoCondition(form) {
-  const cond = form.querySelector('[name=condition]');
-  if (!cond || form.conditionAuto.value !== '1') return;
-  const scores = {};
-  for (const e of store.get().emotions) {
-    const input = form.querySelector(`[name="score-${e.id}"]`);
-    if (input) scores[e.id] = Number(input.value);
-  }
-  cond.value = autoCondition(scores);
-  cond.closest('.slider-row').querySelector('.val').textContent = cond.value;
-}
-
 function submitCheck(form) {
   const fd = new FormData(form);
   const scores = {};
@@ -388,11 +353,13 @@ function submitCheck(form) {
     if (v !== null) scores[e.id] = Number(v);
   }
   const fields = { scores, memo: (fd.get('memo') || '').trim() };
-  if (form.querySelector('[name=condition]')) {
+  if (form.querySelector('.picker[data-kind=trigger]')) {
     fields.triggerIds = fd.getAll('trigger');
-    fields.condition = Number(fd.get('condition'));
-    fields.conditionAuto = fd.get('conditionAuto') === '1';
-    fields.factors = readFactors(fd, store.get().factors.filter((f) => f.scope === 'check'));
+    fields.triggerValues = {};
+    for (const id of fields.triggerIds) {
+      const v = fd.get(`tval-${id}`);
+      if (v !== null && v !== '') fields.triggerValues[id] = Number(v);
+    }
   }
 
   const { mode, sessionId, checkinId } = ui.params;
@@ -551,14 +518,12 @@ function viewHistory() {
 
 function conditionLine(c) {
   const parts = [];
+  // 예전 기록에만 있는 값(종합 컨디션, 피곤함)도 보여 준다
   if (c.condition != null) parts.push(`🌡️ 컨디션 ${c.condition}${c.conditionAuto ? ' (자동)' : ''}`);
   if (c.fatigue != null) parts.push(`😪 피곤함 ${c.fatigue}`);
   const sleep = store.sleepOf(c);
-  if (sleep != null) parts.push(`🛌 ${sleep}시간 잠`);
-  const d = store.get();
-  const factors =
-    factorChips(d.factors.filter((f) => f.scope === 'check'), c.factors || {}) +
-    factorChips(d.factors.filter((f) => f.scope === 'day'), store.getDay(dayKey(c.at)));
+  if (sleep != null) parts.push(`🌙 전날 ${sleep}시간 잠`);
+  const factors = factorChips(store.get().factors, store.getDay(dayKey(c.at)));
   return (parts.length ? `<p class="muted">${parts.join(' · ')}</p>` : '') + factors;
 }
 
@@ -626,7 +591,7 @@ function viewStats() {
     <div class="tile"><b>${ov.avgBadness == null ? '-' : ov.avgBadness.toFixed(1)}</b><span>평균 흔들림</span></div>
   </div>`;
 
-  html += `<div class="chips scroll">${[{ id: 'all', emoji: '🌈', name: '전체' }, ...d.emotions]
+  html += `<div class="chips scroll">${[{ id: 'all', emoji: '🌈', name: '마음 전체' }, ...d.emotions]
     .map((e) => `<button class="chip sel ${emo === e.id ? 'on' : ''}" data-act="stats-emo" data-id="${e.id}">${e.emoji} ${esc(e.name)}</button>`)
     .join('')}</div>`;
 
@@ -648,18 +613,24 @@ function viewStats() {
   html += `<section class="card"><h3>🧺 카테고리별 효과</h3>
     ${effect(stats.byCategory(d, emo), (x) => `${x.category.emoji} ${esc(x.category.name)}`)}</section>`;
 
-  html += `<section class="card"><h3>🌊 어떤 상황에 마음이 흔들릴까?</h3>
-    <p class="muted">흔들림 지수 평균 (0~10, 높을수록 공부하기 어려움)${ov.avgBadness != null ? ` · 평소 ${ov.avgBadness.toFixed(1)}` : ''}</p>
-    ${shake(stats.byTrigger(d, emo), '체크할 때 상황을 고르면 여기에 쌓여요')}</section>`;
   const trend = (r, unit) =>
     r.slope == null
       ? `<p class="muted">${r.n ? '값이 더 다양하게 쌓이면 경향을 계산해요' : ''}</p>`
-      : `<p class="trend">${unit}이 1 늘 때 흔들림이 <b>${Math.abs(r.slope).toFixed(1)}점 ${r.slope > 0 ? '올라가요 📈' : '내려가요 📉'}</b> <span class="muted">(${r.n}개 기준)</span></p>`;
+      : `<p class="trend">${unit} 늘 때 흔들림이 <b>${Math.abs(r.slope).toFixed(1)}점 ${r.slope > 0 ? '올라가요 📈' : '내려가요 📉'}</b> <span class="muted">(${r.n}개 기준)</span></p>`;
+  html += `<section class="card"><h3>🌊 오늘 있었던 일과 마음</h3>
+    <p class="muted">흔들림 지수 평균 (0~10, 높을수록 공부하기 어려움)${ov.avgBadness != null ? ` · 평소 ${ov.avgBadness.toFixed(1)}` : ''}</p>
+    ${shake(stats.byTrigger(d, emo), '체크할 때 있었던 일을 고르면 여기에 쌓여요')}</section>`;
+  const tv = stats.byTriggerValue(d, emo);
+  if (tv.length)
+    html += `<section class="card"><h3>🔢 숫자로 적은 일과 마음</h3>${tv
+      .map((r) => `<div class="factor-stat"><b>${r.trigger.emoji} ${esc(r.trigger.name)}</b>${r.trigger.unit ? ` <span class="muted">(${esc(r.trigger.unit)})</span>` : ''}${trend(r, '숫자가 1')}${r.slope == null ? `<p class="muted">지금 ${r.n}개</p>` : ''}</div>`)
+      .join('')}</section>`;
   const cond = stats.byConditionScore(d, emo);
-  html += `<section class="card"><h3>🌡️ 컨디션과 마음</h3>
-    ${trend(cond, '컨디션')}${shake(cond.rows, '마음을 체크하면 보여요')}</section>`;
+  html += `<section class="card"><h3>🔋 몸 컨디션과 마음</h3>
+    <p class="muted">몸 컨디션 점수 = 몸 컨디션 항목 평균 (높을수록 좋음)</p>
+    ${trend(cond, '몸 컨디션이 1점')}${shake(cond.rows, '마음을 체크하면 보여요')}</section>`;
   const sleep = stats.bySleep(d, emo);
-  html += `<section class="card"><h3>🛌 잠과 마음</h3>${trend(sleep, '잠 시간')}${shake(sleep.rows, '홈에서 잠 시간을 적으면 보여요')}</section>`;
+  html += `<section class="card"><h3>🛌 잠과 마음</h3>${trend(sleep, '잠이 1시간')}${shake(sleep.rows, '홈에서 잠 시간을 적으면 보여요')}</section>`;
 
   const num = (v) => (v == null ? '-' : v.toFixed(1));
   const signed = (v, what) =>
@@ -672,18 +643,18 @@ function viewStats() {
       const title = `<b>${f.emoji} ${esc(f.name)}</b>`;
       if (f.type === 'bool') {
         const side = (g, label) =>
-          `<div class="cmp"><span>${label} <span class="muted">${g.n}회</span></span><span>컨디션 ${num(g.cond)} · 흔들림 ${num(g.bad)}</span></div>`;
+          `<div class="cmp"><span>${label} <span class="muted">${g.n}회</span></span><span>몸 ${num(g.cond)} · 흔들림 ${num(g.bad)}</span></div>`;
         return `<div class="factor-stat">${title}${side(r.yes, '했을 때')}${side(r.no, '안 했을 때')}</div>`;
       }
       const body =
         r.condSlope == null && r.badSlope == null
           ? `<p class="muted">값이 더 다양하게 쌓이면 경향을 계산해요 (${r.n}개)</p>`
-          : `<p>1${esc(f.unit)} 늘 때 ${[signed(r.condSlope, '컨디션'), signed(r.badSlope, '흔들림')].filter(Boolean).join(', ')} <span class="muted">(${r.n}개)</span></p>`;
+          : `<p>${f.type === 'time' ? '1시간 늦게 잘 때' : `1${esc(f.unit)} 늘 때`} ${[signed(r.condSlope, '몸 컨디션'), signed(r.badSlope, '흔들림')].filter(Boolean).join(', ')} <span class="muted">(${r.n}개)</span></p>`;
       return `<div class="factor-stat">${title}${body}</div>`;
     })
     .join('');
-  html += `<section class="card"><h3>🧩 컨디션 요인</h3>
-    ${factorRows || '<p class="muted">마음 체크나 오늘의 기본 기록에서 요인을 적으면 보여요</p>'}</section>`;
+  html += `<section class="card"><h3>🌙 어제 기록과 마음</h3>
+    ${factorRows || '<p class="muted">홈의 어제 기록에 개운함·잠든 시간 등을 적으면 보여요</p>'}</section>`;
   html += `<section class="card"><h3>🕰️ 시간대별</h3>${shake(stats.byTimeSlot(d, emo))}</section>`;
   html += `<section class="card"><h3>📅 요일별</h3>${shake(stats.byWeekday(d, emo))}</section>`;
 
@@ -692,7 +663,7 @@ function viewStats() {
     .map((g) => `<div class="vbar ${g.n ? '' : 'none'}" title="${g.label}"><span>${g.n ? g.avg.toFixed(1) : ''}</span><i style="height:${g.n ? Math.max(4, g.avg * 10) : 4}%"></i><em>${g.label.split('/')[1]}</em></div>`)
     .join('')}</div></section>`;
 
-  html += `<p class="muted pad">💡 "높을수록 좋은" 마음은 뒤집어서 흔들림을 계산해요. 진정 후에 다시 잰 체크는 상황·시간 분석에서 빼요.</p>`;
+  html += `<p class="muted pad">💡 '전체' 흔들림은 마음 항목만으로 계산하고, "높을수록 좋은" 항목은 뒤집어서 계산해요. 진정 후에 다시 잰 체크는 있었던 일·시간 분석에서 빼요.</p>`;
   return html;
 }
 
@@ -712,14 +683,16 @@ function viewManage() {
     <button class="icon-btn" data-act="${editAct}" data-id="${id}" aria-label="수정">✏️</button>
     <button class="icon-btn" data-act="${delAct}" data-id="${id}" aria-label="삭제">🗑️</button></div>`;
 
-  const emotions = d.emotions
-    .map((e) =>
-      item(
-        `<span class="dot" style="background:${e.color}"></span><span class="grow"><b>${e.emoji} ${esc(e.name)}</b>
-         <span class="muted block">${e.direction === 'good' ? '높을수록 좋아요' : '높을수록 안 좋아요'} · 기준 ${e.threshold}점 ${e.direction === 'good' ? '이상' : '이하'}</span></span>`,
-        'edit-emotion', 'del-emotion', e.id)
-    )
-    .join('');
+  const emotionRows = (group) =>
+    d.emotions
+      .filter((e) => (group === 'body' ? e.group === 'body' : e.group !== 'body'))
+      .map((e) =>
+        item(
+          `<span class="dot" style="background:${e.color}"></span><span class="grow"><b>${e.emoji} ${esc(e.name)}</b>
+           <span class="muted block">${e.direction === 'good' ? '높을수록 좋아요' : '높을수록 안 좋아요'} · 기준 ${e.threshold}점 ${e.direction === 'good' ? '이상' : '이하'}</span></span>`,
+          'edit-emotion', 'del-emotion', e.id)
+      )
+      .join('');
   const categories = d.categories
     .map((c) =>
       item(`<span class="grow"><b>${c.emoji} ${esc(c.name)}</b> <span class="muted">방법 ${d.actions.filter((a) => a.categoryId === c.id).length}개</span></span>`,
@@ -734,24 +707,30 @@ function viewManage() {
     })
     .join('');
   const triggers = d.triggers
-    .map((t) => item(`<span class="grow"><b>${t.emoji} ${esc(t.name)}</b></span>`, 'edit-trigger', 'del-trigger', t.id))
+    .map((t) =>
+      item(
+        `<span class="grow"><b>${t.emoji} ${esc(t.name)}</b>${t.detail ? ` <span class="muted">· 숫자 입력${t.unit ? ` (${esc(t.unit)})` : ''}</span>` : ''}</span>`,
+        'edit-trigger', 'del-trigger', t.id)
+    )
     .join('');
+  const typeLabel = { bool: '했어요/안 했어요', time: '시각', number: '숫자' };
   const factors = d.factors
     .map((f) =>
       item(
         `<span class="grow"><b>${f.emoji} ${esc(f.name)}</b>
-         <span class="muted block">${f.type === 'bool' ? '했어요/안 했어요' : `숫자${f.unit ? ` (${esc(f.unit)})` : ''}`} · ${f.scope === 'day' ? '하루 한 번' : '체크할 때마다'}</span></span>`,
+         <span class="muted block">${typeLabel[f.type] || '숫자'}${f.unit ? ` (${esc(f.unit)})` : ''}</span></span>`,
         'edit-factor', 'del-factor', f.id)
     )
     .join('');
 
-  return `<header class="top"><h1>관리 🧺</h1><p class="muted">마음 항목, 진정 방법, 상황을 내 마음대로 바꿔요</p></header>
+  return `<header class="top"><h1>관리 🧺</h1><p class="muted">몸 컨디션, 마음, 오늘 있었던 일, 진정 방법을 내 마음대로 바꿔요</p></header>
     <p class="muted pad">✨ 기본: 없는 기본 항목만 골라서 추가해요 (이미 있는 건 그대로)</p>
-    ${section('💗 측정할 마음', 'edit-emotion', emotions, '마음 항목을 추가해 주세요', 'emotions')}
+    ${section('🔋 몸 컨디션', 'add-body', emotionRows('body'), '몸 컨디션 항목을 추가해 주세요', 'emotions')}
+    ${section('💗 마음', 'add-mind', emotionRows('mind'), '마음 항목을 추가해 주세요', 'emotions')}
+    ${section('🌊 오늘 있었던 일', 'edit-trigger', triggers, '항목을 추가해 주세요', 'triggers')}
+    ${section('🌙 어제 기록 항목', 'edit-factor', factors, '수면 시간 말고 더 적고 싶은 걸 추가해요', 'factors')}
     ${section('🗂️ 행동 카테고리', 'edit-category', categories, '카테고리가 없어요', 'categories')}
     ${section('🌿 진정 방법 (행동)', 'edit-action', actions, '진정 방법을 추가해 주세요', 'actions')}
-    ${section('🌊 상황', 'edit-trigger', triggers, '상황을 추가해 주세요', 'triggers')}
-    ${section('🧩 컨디션 요인', 'edit-factor', factors, '컨디션 요인을 추가해 주세요', 'factors')}
     <section class="card">
       <div class="sec-head"><h2 class="sec-title">💾 백업</h2></div>
       <p class="muted">기록은 이 폰의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니까 가끔 백업해 두세요.</p>
@@ -792,9 +771,13 @@ const nameEmojiFields = (x, placeholder) => `<div class="name-row">
     <label class="field grow"><span>이름</span><input type="text" name="name" value="${esc(x.name)}" required maxlength="30" placeholder="${placeholder}"></label>
   </div>`;
 
-function emotionSheet(id) {
-  const e = (id && store.find('emotions', id)) || { name: '', emoji: '🙂', color: PALETTE[0], direction: 'bad', threshold: 5 };
+function emotionSheet(id, group = 'mind') {
+  const e = (id && store.find('emotions', id)) || { name: '', emoji: '🙂', color: PALETTE[0], direction: 'bad', threshold: 5, group };
   const body = `${nameEmojiFields(e, '예: 귀찮음')}
+    <div class="field"><span>종류</span><div class="chips">
+      <label class="chip"><input type="radio" name="group" value="body" ${e.group === 'body' ? 'checked' : ''}>🔋 몸 컨디션</label>
+      <label class="chip"><input type="radio" name="group" value="mind" ${e.group !== 'body' ? 'checked' : ''}>💗 마음</label>
+    </div></div>
     <div class="field"><span>색</span><div class="swatches">${PALETTE.map(
       (c) => `<label class="swatch"><input type="radio" name="color" value="${c}" ${c === e.color ? 'checked' : ''}><span style="background:${c}"></span></label>`
     ).join('')}</div></div>
@@ -803,9 +786,10 @@ function emotionSheet(id) {
       <label class="chip"><input type="radio" name="direction" value="good" ${e.direction === 'good' ? 'checked' : ''}>높을수록 좋아요 (예: 집중력)</label>
     </div></div>
     ${slider('threshold', '공부해도 괜찮은 기준 점수', e.threshold, e.color, '안 좋은 마음은 이하 · 좋은 마음은 이상')}`;
-  openSheet(id ? '마음 항목 수정' : '마음 항목 추가', body, (fd) => {
+  openSheet(id ? '항목 수정' : '항목 추가', body, (fd) => {
     store.upsert('emotions', {
       id,
+      group: fd.get('group') === 'body' ? 'body' : 'mind',
       name: fd.get('name').trim(),
       emoji: fd.get('emoji').trim() || '🙂',
       color: fd.get('color') || PALETTE[0],
@@ -837,8 +821,14 @@ function actionSheet(id) {
 
 function triggerSheet(id) {
   const t = (id && store.find('triggers', id)) || { name: '', emoji: '🌊' };
-  openSheet(id ? '상황 수정' : '상황 추가', nameEmojiFields(t, '예: 시험 일정 확인함'), (fd) => {
-    store.upsert('triggers', { id, name: fd.get('name').trim(), emoji: fd.get('emoji').trim() || '🌊' });
+  const body = `${nameEmojiFields(t, '예: 시험 일정 확인함')}
+    <label class="chip"><input type="checkbox" name="detail" ${t.detail ? 'checked' : ''}>고른 뒤 숫자도 적을래요 (선택 입력)</label>
+    <label class="field"><span>숫자 단위 (예: 시간 지남, 잔, 분)</span><input type="text" name="unit" value="${esc(t.unit || '')}" maxlength="12"></label>`;
+  openSheet(id ? '오늘 있었던 일 수정' : '오늘 있었던 일 추가', body, (fd) => {
+    const unit = (fd.get('unit') || '').trim();
+    // 단위만 적어도 숫자 입력을 켜 준다
+    const detail = fd.get('detail') !== null || !!unit;
+    store.upsert('triggers', { id, name: fd.get('name').trim(), emoji: fd.get('emoji').trim() || '🌊', detail, unit });
   });
 }
 
@@ -853,12 +843,12 @@ function emotionDefaultsSheet() {
           <input type="checkbox" name="pick" value="${esc(e.name)}">
           <span class="em">${e.emoji}</span>
           <span class="grow"><span class="name">${esc(e.name)}</span>
-          <span class="sub">${e.desc ? `${esc(e.desc)} · ` : ''}${e.direction === 'good' ? '높을수록 좋아요' : '높을수록 안 좋아요'}</span></span>
+          <span class="sub">${e.group === 'body' ? '🔋 몸 컨디션' : '💗 마음'} · ${e.desc ? `${esc(e.desc)} · ` : ''}${e.direction === 'good' ? '높을수록 좋아요' : '높을수록 안 좋아요'}</span></span>
           <span class="check">✓</span>
         </label>`
       )
       .join('')}`;
-  openSheet('✨ 마음 항목 추가', body, (fd) => {
+  openSheet('✨ 몸 컨디션·마음 항목 추가', body, (fd) => {
     const names = fd.getAll('pick');
     if (!names.length) {
       toast('하나 이상 골라 주세요 🙏');
@@ -870,27 +860,23 @@ function emotionDefaultsSheet() {
 }
 
 function factorSheet(id) {
-  const f = (id && store.find('factors', id)) || { name: '', emoji: '🧩', type: 'number', scope: 'check', unit: '' };
-  const radio = (name, value, label, checked) =>
-    `<label class="chip"><input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''}>${label}</label>`;
-  const body = `${nameEmojiFields(f, '예: 물 마신 양')}
+  const f = (id && store.find('factors', id)) || { name: '', emoji: '🌙', type: 'number', unit: '' };
+  const radio = (value, label) =>
+    `<label class="chip"><input type="radio" name="type" value="${value}" ${(f.type || 'number') === value ? 'checked' : ''}>${label}</label>`;
+  const body = `${nameEmojiFields(f, '예: 어제 공부한 시간')}
     <div class="field"><span>기록 방식</span><div class="chips">
-      ${radio('type', 'number', '숫자로 적기', f.type !== 'bool')}
-      ${radio('type', 'bool', '했어요/안 했어요', f.type === 'bool')}
+      ${radio('number', '숫자')}${radio('time', '시각 (예: 23:30)')}${radio('bool', '했어요/안 했어요')}
     </div></div>
-    <label class="field"><span>단위 (숫자일 때만, 선택)</span><input type="text" name="unit" value="${esc(f.unit)}" maxlength="10" placeholder="예: 시간, 잔, 분"></label>
-    <div class="field"><span>언제 적나요?</span><div class="chips">
-      ${radio('scope', 'check', '마음 체크할 때마다', f.scope !== 'day')}
-      ${radio('scope', 'day', '하루에 한 번 (홈 화면)', f.scope === 'day')}
-    </div></div>`;
-  openSheet(id ? '컨디션 요인 수정' : '컨디션 요인 추가', body, (fd) => {
+    <label class="field"><span>단위 (숫자일 때만, 선택)</span><input type="text" name="unit" value="${esc(f.unit)}" maxlength="10" placeholder="예: 시간, 점, 잔"></label>`;
+  openSheet(id ? '어제 기록 항목 수정' : '어제 기록 항목 추가', body, (fd) => {
+    const type = ['bool', 'time'].includes(fd.get('type')) ? fd.get('type') : 'number';
     store.upsert('factors', {
       id,
       name: fd.get('name').trim(),
-      emoji: fd.get('emoji').trim() || '🧩',
-      type: fd.get('type') === 'bool' ? 'bool' : 'number',
-      unit: (fd.get('unit') || '').trim(),
-      scope: fd.get('scope') === 'day' ? 'day' : 'check',
+      emoji: fd.get('emoji').trim() || '🌙',
+      type,
+      unit: type === 'number' ? (fd.get('unit') || '').trim() : '',
+      scope: 'day',
     });
   });
 }
@@ -998,7 +984,9 @@ const handlers = {
   'del-check': (id) => confirmDelete('이 기록을 지울까요?', () => store.removeCheckin(id)),
   'edit-session': editSessionSheet,
   'del-session': (id) => confirmDelete('이 진정 기록과 전·후 체크를 모두 지울까요?', () => store.removeSession(id, true)),
-  'edit-emotion': emotionSheet,
+  'edit-emotion': (id) => emotionSheet(id),
+  'add-body': () => emotionSheet(null, 'body'),
+  'add-mind': () => emotionSheet(null, 'mind'),
   'del-emotion': (id) => confirmDelete('이 마음 항목을 지울까요?\n예전 기록의 점수는 통계에서 빠져요.', () => store.remove('emotions', id)),
   'edit-category': categorySheet,
   'del-category': (id) => confirmDelete('이 카테고리를 지울까요?\n안에 있던 방법은 미분류로 옮겨져요.', () => store.remove('categories', id)),
@@ -1012,9 +1000,9 @@ const handlers = {
     refreshPicker(input.closest('.picker'));
   },
   'picker-close': () => closePickers(),
-  'picker-add': (type, el) => addFromSearch(el.closest('.picker'), type),
+  'picker-add': (_, el) => addFromSearch(el.closest('.picker')),
   'edit-factor': factorSheet,
-  'del-factor': (id) => confirmDelete('이 컨디션 요인을 지울까요?\n예전 기록의 값은 통계에서 빠져요.', () => store.remove('factors', id)),
+  'del-factor': (id) => confirmDelete('이 어제 기록 항목을 지울까요?\n예전 기록의 값은 통계에서 빠져요.', () => store.remove('factors', id)),
   'load-defaults': (col) => {
     if (col === 'emotions') return emotionDefaultsSheet();
     const n = store.addMissingDefaults(col);
@@ -1059,7 +1047,7 @@ document.addEventListener('keydown', (e) => {
     filterPicker(p);
     refreshPicker(p);
   } else if (!first && p.dataset.kind === 'trigger') {
-    addFromSearch(p, 'trigger');
+    addFromSearch(p);
   }
 });
 
@@ -1072,15 +1060,6 @@ document.addEventListener('input', (e) => {
   if (!e.target.matches('[data-slider]')) return;
   const row = e.target.closest('.slider-row');
   row.querySelector('.val').textContent = e.target.value;
-  const form = e.target.form;
-  if (form?.id !== 'check-form') return;
-  if (e.target.name === 'condition') {
-    // 한 번 직접 옮기면 그 뒤로는 자동 계산하지 않는다
-    form.conditionAuto.value = '0';
-    row.querySelector('.hint').textContent = MANUAL_HINT;
-  } else {
-    syncAutoCondition(form);
-  }
 });
 
 document.addEventListener('change', (e) => {
@@ -1097,9 +1076,9 @@ document.addEventListener('submit', (e) => {
     const fd = new FormData(form);
     const today = dayKey(new Date());
     store.setSleep(today, Number(fd.get('sleep')));
-    store.setDayFactors(today, readFactors(fd, store.get().factors.filter((f) => f.scope === 'day')));
+    store.setDayFactors(today, readFactors(fd, store.get().factors));
     ui.editingSleep = false;
-    toast('오늘 기록을 저장했어요 🌙');
+    toast('어제 기록을 저장했어요 🌙');
     render();
   }
   else if (form.id === 'sheet-form' && sheetSubmit) {

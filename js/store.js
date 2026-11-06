@@ -14,23 +14,15 @@ export const dayKey = (v) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-// 컨디션 요인: type 'bool'(예/아니오) | 'number', scope 'check'(체크할 때마다) | 'day'(하루 한 번)
+// 어제 기록 항목 (홈 화면에서 하루 한 번): type 'number' | 'bool' | 'time'
+// 수면 시간은 sleepLog로 따로 저장한다
 function defaultFactors() {
-  const fac = (name, emoji, type, scope, unit = '') => ({ id: uid(), name, emoji, type, scope, unit });
-  return [
-    // 체크할 때마다: 연료(식사·물·카페인)와 누적 피로
-    fac('마지막 식사 후', '🍚', 'number', 'check', '시간'),
-    fac('배부름 (0~10)', '🍽️', 'number', 'check', '점'),
-    fac('커피·카페인', '☕', 'number', 'check', '잔'),
-    fac('오늘 마신 물', '💧', 'number', 'check', '잔'),
-    fac('마지막 휴식 후', '⏱️', 'number', 'check', '분'),
-    // 하루 한 번: 회복과 생체리듬
-    fac('잠의 질 (0~10)', '🌙', 'number', 'day', '점'),
-    fac('낮잠', '😴', 'bool', 'day'),
-    fac('운동', '🏃', 'bool', 'day'),
-    fac('아침 햇볕 쬐기', '☀️', 'bool', 'day'),
-  ];
+  const fac = (name, emoji, type, unit = '', aliases) => ({ id: uid(), name, emoji, type, scope: 'day', unit, aliases });
+  return [fac('개운함 (0~10)', '🌤️', 'number', '점', ['잠의 질 (0~10)']), fac('잠든 시간', '🕚', 'time')];
 }
+
+// 몸 컨디션으로 분류할 마음 항목 (예전 데이터를 나눌 때 사용)
+const BODY_NAMES = ['남은 체력', '남은 정신력', '졸림', '피곤함'];
 
 // 뇌과학(각성 조절·도파민·자율신경)과 스포츠 코칭(루틴·회복·부하 관리) 관점의 기본값
 // aliases: 예전 기본 이름. '기본 불러오기' 때 같은 항목으로 보고 건너뛴다
@@ -45,26 +37,30 @@ function createDefaults() {
   const rest = cat('회복·휴식', '🔋', ['휴식']);
   const sound = cat('소리·음악', '🎧');
   const act = (name, emoji, c, aliases) => ({ id: uid(), name, emoji, categoryId: c.id, aliases });
-  const trig = (name, emoji) => ({ id: uid(), name, emoji });
+  // unit이 있으면 고른 뒤에 숫자를 더 적을 수 있다 (적는 건 선택)
+  const trig = (name, emoji, unit, aliases) => ({ id: uid(), name, emoji, ...(unit ? { detail: true, unit } : {}), aliases });
+  // group: 'body'(몸 컨디션) | 'mind'(마음)
+  const emo = (group, name, emoji, color, direction, threshold, more = {}) => ({ id: uid(), group, name, emoji, color, direction, threshold, ...more });
 
   return {
     version: 1,
+    model: 2,
     emotions: [
-      { id: uid(), name: '남은 체력', emoji: '🔋', color: '#8EC5FF', direction: 'good', threshold: 5 },
-      { id: uid(), name: '남은 정신력', emoji: '🧠', color: '#E3A6FF', direction: 'good', threshold: 5 },
-      { id: uid(), name: '놀고 싶은 마음', emoji: '🎮', color: '#FF9AA2', direction: 'bad', threshold: 6, aliases: ['놀고 싶음'] },
-      { id: uid(), name: '미루고 싶은 마음', emoji: '🐢', color: '#C9B6A6', direction: 'bad', threshold: 5 },
-      { id: uid(), name: '집중하고 싶은 마음', emoji: '🎯', color: '#9ED9B5', direction: 'good', threshold: 5, aliases: ['집중하고 싶음'] },
+      emo('body', '남은 체력', '🔋', '#8EC5FF', 'good', 5),
+      emo('body', '남은 정신력', '🧠', '#E3A6FF', 'good', 5),
+      emo('mind', '놀고 싶은 마음', '🎮', '#FF9AA2', 'bad', 6, { aliases: ['놀고 싶음'] }),
+      emo('mind', '미루고 싶은 마음', '🐢', '#C9B6A6', 'bad', 5),
+      emo('mind', '집중하고 싶은 마음', '🎯', '#9ED9B5', 'good', 5, { aliases: ['집중하고 싶음'] }),
       // extra: 처음 설치할 땐 넣지 않고, '기본 불러오기'에서 골라서 추가한다
-      { id: uid(), name: '폰 보고 싶은 마음', emoji: '📱', color: '#FFB38A', direction: 'bad', threshold: 5, extra: true, desc: '알림·쇼츠가 자꾸 떠오르는 정도' },
-      { id: uid(), name: '잡생각', emoji: '🌀', color: '#B5B9FF', direction: 'bad', threshold: 5, extra: true, desc: '딴생각이 계속 끼어드는 정도' },
-      { id: uid(), name: '불안·긴장', emoji: '😰', color: '#B5B9FF', direction: 'bad', threshold: 5, extra: true, aliases: ['불안함'], desc: '각성이 너무 높아 들뜬 상태' },
-      { id: uid(), name: '짜증', emoji: '😤', color: '#FF9AA2', direction: 'bad', threshold: 5, extra: true, desc: '예민하고 날이 선 정도' },
-      { id: uid(), name: '졸림', emoji: '😪', color: '#C9B6A6', direction: 'bad', threshold: 5, extra: true, desc: '각성이 너무 낮아 처지는 상태' },
-      { id: uid(), name: '지루함', emoji: '🥱', color: '#FFD97A', direction: 'bad', threshold: 5, extra: true, desc: '공부가 재미없고 따분한 정도' },
-      { id: uid(), name: '의욕', emoji: '🔥', color: '#FFB38A', direction: 'good', threshold: 5, extra: true, desc: '해 보고 싶은 마음이 얼마나 있는지' },
-      { id: uid(), name: '자신감', emoji: '💪', color: '#8EC5FF', direction: 'good', threshold: 5, extra: true, desc: '오늘 할 걸 해낼 수 있을 것 같은 느낌' },
-      { id: uid(), name: '차분함', emoji: '🍃', color: '#9ED9B5', direction: 'good', threshold: 5, extra: true, desc: '마음이 가라앉아 안정된 정도' },
+      emo('body', '졸림', '😪', '#C9B6A6', 'bad', 5, { extra: true, desc: '각성이 너무 낮아 처지는 상태' }),
+      emo('mind', '폰 보고 싶은 마음', '📱', '#FFB38A', 'bad', 5, { extra: true, desc: '알림·쇼츠가 자꾸 떠오르는 정도' }),
+      emo('mind', '잡생각', '🌀', '#B5B9FF', 'bad', 5, { extra: true, desc: '딴생각이 계속 끼어드는 정도' }),
+      emo('mind', '불안·긴장', '😰', '#B5B9FF', 'bad', 5, { extra: true, aliases: ['불안함'], desc: '각성이 너무 높아 들뜬 상태' }),
+      emo('mind', '짜증', '😤', '#FF9AA2', 'bad', 5, { extra: true, desc: '예민하고 날이 선 정도' }),
+      emo('mind', '지루함', '🥱', '#FFD97A', 'bad', 5, { extra: true, desc: '공부가 재미없고 따분한 정도' }),
+      emo('mind', '의욕', '🔥', '#FFB38A', 'good', 5, { extra: true, desc: '해 보고 싶은 마음이 얼마나 있는지' }),
+      emo('mind', '자신감', '💪', '#8EC5FF', 'good', 5, { extra: true, desc: '오늘 할 걸 해낼 수 있을 것 같은 느낌' }),
+      emo('mind', '차분함', '🍃', '#9ED9B5', 'good', 5, { extra: true, desc: '마음이 가라앉아 안정된 정도' }),
     ],
     categories: [breath, body, sense, env, mind, routine, rest, sound],
     actions: [
@@ -115,18 +111,24 @@ function createDefaults() {
       trig('게임 하고 나서', '🎮'),
       trig('연락 받음', '💬'),
       trig('친구와 놀고 옴', '🧑‍🤝‍🧑'),
-      // 몸 상태
-      trig('밥 먹은 후', '🍚'),
-      trig('배고픔', '🍽️'),
-      trig('피곤함', '😪'),
-      trig('오래 앉아 있었음', '🪑'),
+      trig('친구가 노는 걸 봄', '👀'),
+      // 몸 상태 (고르면 숫자를 더 적을 수 있는 것도 있다)
+      trig('밥 먹은 지 꽤 됨', '🍚', '시간 지남', ['마지막 식사 후']),
+      trig('밥을 못 먹음', '🙅'),
+      trig('배부르게 먹음', '🍽️', '점 (배부름 0~10)', ['배부름 (0~10)']),
+      trig('배고픔', '🥺'),
+      trig('커피·카페인 마심', '☕', '잔', ['커피·카페인']),
+      trig('물을 별로 안 마심', '💧', '잔 마심', ['오늘 마신 물']),
+      trig('오래 앉아 있었음', '🪑', '분째', ['마지막 휴식 후']),
+      trig('낮잠 잠', '😴', '분'),
+      trig('운동함', '🏃'),
       // 과제가 주는 부담
       trig('어디서부터 할지 모르겠음', '🌫️'),
-      trig('공부가 막힘', '🧱'),
+      trig('문제가 안 풀림', '🧱', '', ['공부가 막힘']),
       trig('공부할 양이 많음', '📚'),
       trig('시험·마감 다가옴', '⏰'),
       trig('결과가 안 좋았음', '📉'),
-      trig('남과 비교함', '👀'),
+      trig('남과 비교함', '🪞'),
       // 그 밖의 스트레스
       trig('잔소리·다툼', '💢'),
       trig('날씨 탓', '🌧️'),
@@ -144,7 +146,7 @@ function createDefaults() {
 function normalize() {
   data.version ||= 1;
   // 컨디션 요인이 생기기 전에 쓰던 데이터에는 기본 요인을 넣어 준다
-  if (!Array.isArray(data.factors)) data.factors = defaultFactors();
+  if (!Array.isArray(data.factors)) data.factors = defaultFactors().map(stripAliases);
   for (const k of COLLECTIONS) if (!Array.isArray(data[k])) data[k] = [];
   if (!data.sleepLog || typeof data.sleepLog !== 'object') data.sleepLog = {};
   if (!data.dayLog || typeof data.dayLog !== 'object') data.dayLog = {};
@@ -153,6 +155,25 @@ function normalize() {
     for (const c of data.checkins) if (c.condition != null) c.condition = Math.round((c.condition - 1) * 2.5);
     data.conditionScale = 10;
   }
+  if (data.model !== 2) migrateToModel2();
+}
+
+// 구조 변경: 마음을 몸 컨디션/마음으로 나누고,
+// 체크할 때마다 적던 컨디션 요인(식사·카페인 등)은 '오늘 있었던 일'로 옮긴다
+function migrateToModel2() {
+  for (const e of data.emotions) e.group ||= BODY_NAMES.includes(e.name) ? 'body' : 'mind';
+  for (const f of data.factors.filter((x) => x.scope === 'check')) {
+    const isNum = f.type === 'number';
+    data.triggers.push({ id: f.id, name: f.name, emoji: f.emoji, ...(isNum ? { detail: true, unit: f.unit || '' } : {}) });
+    for (const c of data.checkins) {
+      const v = c.factors?.[f.id];
+      if (v == null || v === false || v === '' || (isNum && Number(v) === 0)) continue;
+      c.triggerIds = [...(c.triggerIds || []), f.id];
+      if (isNum) c.triggerValues = { ...c.triggerValues, [f.id]: v };
+    }
+  }
+  data.factors = data.factors.filter((x) => x.scope !== 'check');
+  data.model = 2;
 }
 
 function persist() {

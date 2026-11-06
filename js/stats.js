@@ -10,7 +10,19 @@ export const isOk = (e, v) => (e.direction === 'good' ? v >= e.threshold : v <= 
 export const improvement = (e, before, after) => (e.direction === 'good' ? after - before : before - after);
 
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
-const emotionsFor = (d, emo) => (emo === 'all' ? d.emotions : d.emotions.filter((e) => e.id === emo));
+// '전체'는 마음 항목만 본다 (몸 컨디션은 마음을 설명하는 쪽이라 따로 본다)
+const mindEmotions = (d) => {
+  const mind = d.emotions.filter((e) => e.group !== 'body');
+  return mind.length ? mind : d.emotions;
+};
+const emotionsFor = (d, emo) => (emo === 'all' ? mindEmotions(d) : d.emotions.filter((e) => e.id === emo));
+
+// 몸 컨디션 점수: 몸 컨디션 항목을 "높을수록 좋음"으로 맞춘 평균. 예전 기록은 종합 컨디션 값
+export function bodyScore(d, c) {
+  const body = d.emotions.filter((e) => e.group === 'body' && c.scores[e.id] != null);
+  if (body.length) return mean(body.map((e) => 10 - badness(e, c.scores[e.id])));
+  return c.condition ?? null;
+}
 const findCheckin = (d, id) => d.checkins.find((c) => c.id === id);
 
 export function checkinBadness(d, c, emo = 'all') {
@@ -128,16 +140,31 @@ function byNumber(d, emo, valueOf, labelOf) {
   return { rows, slope: slope(points), n: points.length };
 }
 
-export const byConditionScore = (d, emo = 'all') => byNumber(d, emo, (c) => c.condition ?? null, (x) => `🌡️ ${x}점`);
+export const byConditionScore = (d, emo = 'all') =>
+  byNumber(d, emo, (c) => {
+    const s = bodyScore(d, c);
+    return s == null ? null : Math.round(s);
+  }, (x) => `🔋 ${x}점`);
 
-// 컨디션 요인별로 컨디션·흔들림이 어떻게 달라지는지
+// 잠든 시각을 숫자로: 저녁 6시 이후는 그대로, 자정 넘으면 24를 더해 23:30 → 23.5, 01:00 → 25
+export function timeToHours(t) {
+  if (!t || typeof t !== 'string') return null;
+  const [h, m] = t.split(':').map(Number);
+  const x = h + (m || 0) / 60;
+  return h < 12 ? x + 24 : x;
+}
+
+// 어제 기록 항목별로 몸 컨디션·흔들림이 어떻게 달라지는지
 export function byFactor(d, emo = 'all') {
   const nat = naturalCheckins(d);
-  const valueOf = (f, c) => (f.scope === 'day' ? d.dayLog?.[dayKey(c.at)]?.[f.id] : c.factors?.[f.id]) ?? null;
+  const valueOf = (f, c) => {
+    const v = d.dayLog?.[dayKey(c.at)]?.[f.id] ?? null;
+    return f.type === 'time' ? timeToHours(v) : v;
+  };
   const avgOf = (pts, key) => mean(pts.map((p) => p[key]).filter((x) => x != null));
   return d.factors.map((f) => {
     const pts = nat
-      .map((c) => ({ v: valueOf(f, c), cond: c.condition ?? null, bad: checkinBadness(d, c, emo) }))
+      .map((c) => ({ v: valueOf(f, c), cond: bodyScore(d, c), bad: checkinBadness(d, c, emo) }))
       .filter((p) => p.v != null);
     if (f.type === 'bool') {
       const group = (flag) => {
@@ -149,6 +176,20 @@ export function byFactor(d, emo = 'all') {
     const pairs = (key) => pts.filter((p) => p[key] != null).map((p) => [p.v, p[key]]);
     return { factor: f, n: pts.length, condSlope: slope(pairs('cond')), badSlope: slope(pairs('bad')) };
   });
+}
+
+// 숫자도 적은 '오늘 있었던 일': 값이 1 늘 때 흔들림이 얼마나 변하는지
+export function byTriggerValue(d, emo = 'all') {
+  const nat = naturalCheckins(d);
+  return d.triggers
+    .filter((t) => t.detail)
+    .map((t) => {
+      const pts = nat
+        .map((c) => [c.triggerValues?.[t.id] ?? null, checkinBadness(d, c, emo)])
+        .filter(([x, y]) => x != null && y != null);
+      return { trigger: t, n: pts.length, slope: slope(pts) };
+    })
+    .filter((r) => r.n);
 }
 
 export const bySleep = (d, emo = 'all') =>

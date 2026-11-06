@@ -269,7 +269,10 @@ input[type="search"]:focus { border-style: solid; border-color: var(--pink); }
 }
 .picker-list label.chip { background: #fff; }
 .picker-panel .btn.block { margin: 4px 0 6px; }
-.factor-detail { margin: 8px 0; }
+.pick-detail { display: flex; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 10px; background: var(--bg, #fff7fa); border-radius: 12px; font-size: 14px; }
+.pick-detail .pd-name { flex: 1; min-width: 0; }
+.pick-detail input { width: 72px; padding: 6px 8px; text-align: right; }
+.pick-detail .pd-unit { color: var(--muted, #999); white-space: nowrap; }
 
 .factor-stat { padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
 .factor-stat:last-child { border-bottom: 0; }
