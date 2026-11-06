@@ -196,16 +196,13 @@ function viewCheck() {
     : base.condition;
   const context = isAfter
     ? ''
-    : `<h3 class="sec">어떤 상황이었나요? <span class="muted">여러 개 골라도 돼요</span></h3>
-      <div class="chips" id="trigger-chips">${d.triggers
-        .map((t) => `<label class="chip"><input type="checkbox" name="trigger" value="${t.id}" ${triggerIds.includes(t.id) ? 'checked' : ''}>${t.emoji} ${esc(t.name)}</label>`)
-        .join('')}</div>
-      <button type="button" class="btn sm ghost" data-act="quick-trigger">＋ 새 상황</button>
+    : `<h3 class="sec">어떤 상황이었나요? <span class="muted">선택</span></h3>
+      ${picker('trigger', '눌러서 고르거나 검색해요', d.triggers.map((t) => pickItem('trigger', t.id, `${t.emoji} ${esc(t.name)}`, triggerIds.includes(t.id))))}
       <h3 class="sec">지금 컨디션은 전체적으로 어때요?</h3>
       <p class="muted">마음 점수에 맞춰 자동으로 채워져요. 다르면 직접 옮겨 주세요.</p>
       ${slider('condition', '🌡️ 컨디션', conditionValue, '#FFC46B', conditionAuto ? AUTO_HINT : MANUAL_HINT)}
       <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">
-      ${checkFactors.length ? `<h3 class="sec">컨디션에 영향을 준 것 <span class="muted">비워 둬도 돼요</span></h3>${factorInputs(checkFactors, base?.factors || {})}` : ''}`;
+      ${checkFactors.length ? `<h3 class="sec">컨디션에 영향을 준 것 <span class="muted">선택</span></h3>${factorPicker(checkFactors, base?.factors || {})}` : ''}`;
 
   return `<header class="top">
       <button class="back" data-act="back">‹ 돌아가기</button>
@@ -219,6 +216,97 @@ function viewCheck() {
       </label>
       <button class="btn primary block" type="submit">${mode === 'edit' ? '수정 완료' : '기록하기'}</button>
     </form>`;
+}
+
+// ---------- 검색해서 고르는 칩 목록 ----------
+// 선택한 것만 위에 보이고, 검색칸을 누르면 전체 목록이 열린다
+const pickItem = (name, value, label, checked) =>
+  `<label class="chip" data-text="${label.replace(/"/g, '&quot;')}"><input type="checkbox" id="pk-${name}-${value}" name="${name}" value="${value}" ${checked ? 'checked' : ''}>${label}</label>`;
+
+function picker(kind, placeholder, items, details = '') {
+  return `<div class="picker" data-kind="${kind}">
+    <div class="picker-selected">${selectedChips(items.filter((i) => i.includes(' checked>')))}</div>
+    ${details}
+    <input type="search" class="picker-search" placeholder="🔍 ${placeholder}" autocomplete="off" enterkeyhint="done">
+    <div class="picker-panel" hidden>
+      <div class="chips picker-list">${items.join('')}</div>
+      <p class="muted picker-empty" hidden>찾는 항목이 없어요</p>
+      ${kind === 'trigger' ? '<button type="button" class="btn sm ghost picker-add" data-act="picker-add-trigger" hidden></button>' : ''}
+      <button type="button" class="btn sm block" data-act="picker-close">닫기</button>
+    </div>
+  </div>`;
+}
+
+// 처음 그릴 때와 선택이 바뀔 때 모두 같은 모양으로 선택 칩을 만든다
+function selectedChips(itemsOrInputs) {
+  return itemsOrInputs
+    .map((x) => {
+      const el = typeof x === 'string' ? new DOMParser().parseFromString(x, 'text/html').querySelector('label') : x.closest('label');
+      return `<button type="button" class="chip picked" data-act="unpick" data-id="${el.querySelector('input').id}">${esc(el.dataset.text)} <span class="x">✕</span></button>`;
+    })
+    .join('');
+}
+
+function refreshPicker(p) {
+  p.querySelector('.picker-selected').innerHTML = selectedChips([...p.querySelectorAll('.picker-list input:checked')]);
+  // 숫자 요인은 고른 것만 입력칸을 연다 (안 고른 칸은 disabled라 저장되지 않음)
+  for (const det of p.querySelectorAll('.factor-detail')) {
+    const on = p.querySelector(`input[name="use-${det.dataset.for}"]`).checked;
+    det.hidden = !on;
+    det.querySelector('input').disabled = !on;
+  }
+}
+
+function filterPicker(p) {
+  const q = p.querySelector('.picker-search').value.trim().toLowerCase();
+  let shown = 0;
+  for (const label of p.querySelectorAll('.picker-list label')) {
+    label.hidden = q && !label.dataset.text.toLowerCase().includes(q);
+    if (!label.hidden) shown++;
+  }
+  p.querySelector('.picker-empty').hidden = shown > 0;
+  const add = p.querySelector('.picker-add');
+  if (add) {
+    const exact = [...p.querySelectorAll('.picker-list label')].some((l) => l.dataset.text.toLowerCase().endsWith(` ${q}`));
+    add.hidden = !q || exact;
+    add.textContent = `＋ "${p.querySelector('.picker-search').value.trim()}" 새 상황으로 추가`;
+  }
+}
+
+const openPicker = (p) => (p.querySelector('.picker-panel').hidden = false);
+function closePickers(except) {
+  for (const p of document.querySelectorAll('.picker')) if (p !== except) p.querySelector('.picker-panel').hidden = true;
+}
+
+function addTriggerFromSearch(p) {
+  const search = p.querySelector('.picker-search');
+  const name = search.value.trim();
+  if (!name) return;
+  const t = store.upsert('triggers', { name, emoji: '🌊' });
+  // 폼을 다시 그리면 입력한 점수가 사라지므로 칩만 끼워 넣는다
+  p.querySelector('.picker-list').insertAdjacentHTML('beforeend', pickItem('trigger', t.id, `${t.emoji} ${esc(t.name)}`, true));
+  search.value = '';
+  filterPicker(p);
+  refreshPicker(p);
+  toast(`"${name}" 상황을 추가했어요`);
+}
+
+// 요인은 칩으로 고르고, 숫자 요인은 고르면 값을 적는 칸이 열린다
+function factorPicker(factors, values) {
+  const has = (f) => (f.type === 'bool' ? values[f.id] === true : values[f.id] != null);
+  const items = factors.map((f) =>
+    pickItem(f.type === 'bool' ? `factor-${f.id}` : `use-${f.id}`, f.id, `${f.emoji} ${esc(f.name)}`, has(f))
+  );
+  const details = factors
+    .filter((f) => f.type === 'number')
+    .map(
+      (f) => `<label class="field factor-detail" data-for="${f.id}" ${has(f) ? '' : 'hidden'}>
+        <span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''} <span class="muted">· 비워 둬도 돼요</span></span>
+        <input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${values[f.id] ?? ''}" ${has(f) ? '' : 'disabled'}>
+      </label>`
+    )
+    .join('');
+  return picker('factor', '요인 고르거나 검색해요', items, details);
 }
 
 // ---------- 컨디션 요인 입력 ----------
@@ -734,18 +822,10 @@ function actionSheet(id) {
   });
 }
 
-function triggerSheet(id, quick = false) {
+function triggerSheet(id) {
   const t = (id && store.find('triggers', id)) || { name: '', emoji: '🌊' };
   openSheet(id ? '상황 수정' : '상황 추가', nameEmojiFields(t, '예: 시험 일정 확인함'), (fd) => {
-    const saved = store.upsert('triggers', { id, name: fd.get('name').trim(), emoji: fd.get('emoji').trim() || '🌊' });
-    if (quick) {
-      // 체크 중인 폼을 다시 그리면 입력한 점수가 사라지므로 칩만 끼워 넣는다
-      document.getElementById('trigger-chips')?.insertAdjacentHTML(
-        'beforeend',
-        `<label class="chip"><input type="checkbox" name="trigger" value="${saved.id}" checked>${saved.emoji} ${esc(saved.name)}</label>`
-      );
-      return 'no-render';
-    }
+    store.upsert('triggers', { id, name: fd.get('name').trim(), emoji: fd.get('emoji').trim() || '🌊' });
   });
 }
 
@@ -913,7 +993,13 @@ const handlers = {
   'del-action': (id) => confirmDelete('이 진정 방법을 지울까요?\n예전 기록에는 "삭제된 방법"으로 보여요.', () => store.remove('actions', id)),
   'edit-trigger': triggerSheet,
   'del-trigger': (id) => confirmDelete('이 상황을 지울까요?', () => store.remove('triggers', id)),
-  'quick-trigger': () => triggerSheet(null, true),
+  unpick: (inputId) => {
+    const input = document.getElementById(inputId);
+    input.checked = false;
+    refreshPicker(input.closest('.picker'));
+  },
+  'picker-close': () => closePickers(),
+  'picker-add-trigger': () => addTriggerFromSearch(document.querySelector('.picker[data-kind=trigger]')),
   'edit-factor': factorSheet,
   'del-factor': (id) => confirmDelete('이 컨디션 요인을 지울까요?\n예전 기록의 값은 통계에서 빠져요.', () => store.remove('factors', id)),
   'load-defaults': (col) => {
@@ -934,12 +1020,42 @@ const handlers = {
 };
 
 document.addEventListener('click', (e) => {
+  // 검색 목록 바깥을 누르면 목록을 닫는다
+  closePickers(e.target.closest('.picker'));
   const t = e.target.closest('[data-act]');
   if (!t) return;
   handlers[t.dataset.act]?.(t.dataset.id || undefined);
 });
 
+document.addEventListener('focusin', (e) => {
+  if (!e.target.matches('.picker-search')) return;
+  const p = e.target.closest('.picker');
+  closePickers(p);
+  openPicker(p);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.matches('.picker-search')) return;
+  // 검색칸에서 엔터를 눌러도 폼이 제출되지 않게: 보이는 첫 항목을 고르거나 새 상황으로 추가
+  e.preventDefault();
+  const p = e.target.closest('.picker');
+  const first = [...p.querySelectorAll('.picker-list label')].find((l) => !l.hidden);
+  if (first && e.target.value.trim()) {
+    first.querySelector('input').checked = true;
+    e.target.value = '';
+    filterPicker(p);
+    refreshPicker(p);
+  } else if (!first && p.dataset.kind === 'trigger') {
+    addTriggerFromSearch(p);
+  }
+});
+
 document.addEventListener('input', (e) => {
+  if (e.target.matches('.picker-search')) {
+    const p = e.target.closest('.picker');
+    openPicker(p);
+    return filterPicker(p);
+  }
   if (!e.target.matches('[data-slider]')) return;
   const row = e.target.closest('.slider-row');
   row.querySelector('.val').textContent = e.target.value;
@@ -956,6 +1072,7 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   if (e.target.id === 'import-file') importData(e.target);
+  if (e.target.closest('.picker-list')) refreshPicker(e.target.closest('.picker'));
 });
 
 document.addEventListener('submit', (e) => {

@@ -238,6 +238,35 @@ textarea { min-height: 80px; resize: vertical; }
 .card.sleep { padding: 14px 18px; }
 .card.sleep h3 { margin: 0; }
 .card.sleep .row input { flex: 1; min-width: 0; }
+[hidden] { display: none !important; }
+
+/* 검색해서 고르기 */
+.picker-selected:not(:empty) { margin-bottom: 6px; }
+.chip.picked { background: var(--pink-soft); border-color: var(--pink); font-weight: 700; font-size: 14px; padding: 7px 12px; }
+.chip.picked .x { font-size: 11px; color: var(--muted); }
+input[type="search"] {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px dashed #e6d8de;
+  border-radius: 14px;
+  background: #fffcfb;
+  outline: none;
+  -webkit-appearance: none;
+}
+input[type="search"]:focus { border-style: solid; border-color: var(--pink); }
+.picker-panel {
+  margin-top: 8px;
+  padding: 10px 10px 4px;
+  border-radius: 16px;
+  background: #fbf6f8;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.picker-list label.chip { background: #fff; }
+.picker-panel .btn.block { margin: 4px 0 6px; }
+.picker-add { display: block; margin-bottom: 6px; }
+.factor-detail { margin: 8px 0; }
+
 .factor-stat { padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
 .factor-stat:last-child { border-bottom: 0; }
 .cmp { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
