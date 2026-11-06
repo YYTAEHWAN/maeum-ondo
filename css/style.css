@@ -36,7 +36,11 @@ button { cursor: pointer; }
 h1 { font-size: 23px; margin: 2px 0 4px; letter-spacing: -0.02em; }
 h2 { font-size: 18px; margin: 22px 4px 6px; }
 h3 { font-size: 16px; margin: 0 0 8px; }
-h3.sec { margin-top: 22px; }
+/* 마음 체크의 주제 제목: 크게, 위에 구분선 */
+h3.sec { font-size: 20px; font-weight: 800; margin: 22px 0 12px; padding-top: 20px; border-top: 2px dashed var(--line); }
+h3.sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.slider-row:has(+ h3.sec), .picker:has(+ h3.sec) { border-bottom: 0; }
+h3.sec .muted { font-size: 13px; font-weight: 400; margin-left: 4px; }
 p { margin: 6px 0; }
 .muted { color: var(--muted); font-size: 13px; font-weight: 400; }
 .block { display: block; }

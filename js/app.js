@@ -405,10 +405,17 @@ function readFactors(fd, factors) {
   return out;
 }
 
+// '22:00' → '오후 10시', '01:15' → '오전 1시 15분'
+function fmtClock(v) {
+  if (!v || typeof v !== 'string') return '';
+  const [h, m] = v.split(':').map(Number);
+  return `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}시${m ? ` ${m}분` : ''}`;
+}
+
 function factorChips(factors, values) {
   const chips = factors
     .filter((f) => (f.type === 'bool' ? values[f.id] === true : values[f.id] != null))
-    .map((f) => `<span class="chip">${f.emoji} ${esc(f.name)}${f.type === 'bool' ? ' ✓' : f.type === 'scale' ? ` ${values[f.id]}/10` : ` ${values[f.id]}${esc(f.unit || '')}`}</span>`)
+    .map((f) => `<span class="chip">${f.emoji} ${esc(f.name)}${f.type === 'bool' ? ' ✓' : f.type === 'scale' ? ` ${values[f.id]}/10` : f.type === 'time' ? ` ${fmtClock(values[f.id])}` : ` ${values[f.id]}${esc(f.unit || '')}`}</span>`)
     .join('');
   return chips ? `<div>${chips}</div>` : '';
 }
