@@ -425,3 +425,9 @@ input[type="time"]::-webkit-date-and-time-value { text-align: left; }
 }
 .tsel-opt:hover { background: #fbf6f8; }
 .tsel-opt.on { background: var(--pink-soft); color: var(--ink); font-weight: 800; }
+
+/* 홈의 마지막 체크: 제목과 점수 칩 사이를 넉넉하게 */
+.last-check .spread { margin-bottom: 16px; }
+.last-chips { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+.last-chips .chip { margin: 0; padding: 8px 14px; font-size: 14px; }
+.last-check .last-chips + p { margin: 16px 0 0; }

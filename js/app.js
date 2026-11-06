@@ -81,7 +81,7 @@ function bar(label, value, max, sub, color) {
 function slider(name, label, value, color, hint = '') {
   return `<div class="slider-row" style="--c:${color}">
     <div class="slider-head"><span>${label} <span class="hint">${hint}</span></span><span class="val">${value}</span></div>
-    <div class="slider-line"><span>0</span><input type="range" min="0" max="10" step="1" name="${name}" value="${value}" data-slider><span>10</span></div>
+    <div class="slider-line"><input type="range" min="0" max="10" step="1" name="${name}" value="${value}" data-slider></div>
   </div>`;
 }
 
@@ -140,15 +140,15 @@ function viewHome() {
   html += `<button class="cta" data-act="new-check">💗 지금 내 마음 체크하기</button>`;
 
   html += `<div class="tiles">
-    <div class="tile"><b>${d.checkins.filter((c) => dayKey(c.at) === today).length}</b><span>오늘 체크</span></div>
-    <div class="tile"><b>${d.sessions.filter((s) => dayKey(s.at) === today).length}</b><span>오늘 진정 시도</span></div>
+    <div class="tile"><b>${d.checkins.filter((c) => dayKey(c.at) === today).length}</b><span>오늘의 체크</span></div>
+    <div class="tile"><b>${d.sessions.filter((s) => dayKey(s.at) === today).length}</b><span>오늘의 마음 진정</span></div>
   </div>`;
 
   if (last) {
     const ok = d.emotions.every((e) => last.scores[e.id] == null || stats.isOk(e, last.scores[e.id]));
-    html += `<section class="card">
+    html += `<section class="card last-check">
       <div class="spread"><h3>마지막 체크</h3><span class="muted">${ago(last.at)}</span></div>
-      <div>${scoreChips(last)}</div>
+      <div class="last-chips">${scoreChips(last)}</div>
       <p class="muted">${ok ? '✨ 공부하기 괜찮은 상태였어요' : '🌊 마음이 조금 출렁였어요'}</p>
     </section>`;
   } else {
@@ -316,7 +316,7 @@ function factorInputs(factors, values) {
       if (f.type === 'scale')
         return `<div class="slider-row gauge ${v === '' ? 'untouched' : ''}" style="--c:var(--sky)">
           <div class="slider-head"><span>${f.emoji} ${esc(f.name)}</span><span class="val">${v === '' ? '–' : v}</span></div>
-          <div class="slider-line"><span>0</span><input type="range" min="0" max="10" step="1" value="${v === '' ? 5 : v}" data-gauge="factor-${f.id}" aria-label="${esc(f.name)}"><span>10</span></div>
+          <div class="slider-line"><input type="range" min="0" max="10" step="1" value="${v === '' ? 5 : v}" data-gauge="factor-${f.id}" aria-label="${esc(f.name)} (0~10)"></div>
           <input type="hidden" name="factor-${f.id}" value="${v}">
         </div>`;
       // 시각은 버튼으로 된 선택칸이라 label로 감싸지 않는다 (라벨을 누르면 첫 버튼이 눌리는 것 방지)
@@ -821,7 +821,7 @@ function viewManage() {
 // ---------- 시트 (추가/수정 폼) ----------
 const PALETTE = ['#FF9AA2', '#FFB38A', '#FFD97A', '#9ED9B5', '#8EC5FF', '#B5B9FF', '#E3A6FF', '#C9B6A6'];
 
-function openSheet(title, body, onSubmit) {
+function openSheet(title, body, onSubmit, submitLabel = '저장', submitClass = 'primary') {
   $sheet.innerHTML = `<div class="sheet-backdrop" data-act="close-sheet"></div>
     <form class="sheet" id="sheet-form">
       <div class="sheet-handle"></div>
@@ -829,7 +829,7 @@ function openSheet(title, body, onSubmit) {
       ${body}
       <div class="row">
         <button type="button" class="btn ghost" data-act="close-sheet">취소</button>
-        <button type="submit" class="btn primary">저장</button>
+        <button type="submit" class="btn ${submitClass}">${submitLabel}</button>
       </div>
     </form>`;
   sheetSubmit = onSubmit;
@@ -1004,21 +1004,20 @@ async function importData(input) {
   try {
     const obj = JSON.parse(await file.text());
     if (!Array.isArray(obj.emotions) || !Array.isArray(obj.checkins)) throw new Error('형식 오류');
-    if (!confirm('지금 기록을 백업 파일 내용으로 바꿀까요?\n지금 기록은 사라져요.')) return;
-    store.replaceAll(obj);
-    toast('백업을 불러왔어요 📥');
-    render();
+    openSheet('지금 기록을 백업 파일 내용으로 바꿀까요?', '<p class="muted">지금 기록은 사라져요.</p>', () => {
+      store.replaceAll(obj);
+      toast('백업을 불러왔어요 📥');
+    }, '바꾸기', 'danger');
   } catch {
     toast('올바른 백업 파일이 아니에요 😢');
   }
 }
 
 // ---------- 이벤트 ----------
+// 브라우저 기본 confirm 창은 설치한 앱·일부 브라우저에서 안 뜨고 바로 '취소'가 돼서, 앱 안의 시트로 묻는다
 const confirmDelete = (msg, fn) => {
-  if (confirm(msg)) {
-    fn();
-    render();
-  }
+  const [title, ...rest] = msg.split('\n');
+  openSheet(esc(title), rest.length ? `<p class="muted">${esc(rest.join(' '))}</p>` : '', () => fn(), '지우기', 'danger');
 };
 
 const handlers = {
@@ -1068,7 +1067,7 @@ const handlers = {
   'edit-action': actionSheet,
   'del-action': (id) => confirmDelete('이 진정 방법을 지울까요?\n예전 기록에는 "삭제된 방법"으로 보여요.', () => store.remove('actions', id)),
   'edit-trigger': triggerSheet,
-  'del-trigger': (id) => confirmDelete('이 상황을 지울까요?', () => store.remove('triggers', id)),
+  'del-trigger': (id) => confirmDelete('이 \'오늘 있었던 일\' 항목을 지울까요?', () => store.remove('triggers', id)),
   unpick: (inputId) => {
     const input = document.getElementById(inputId);
     input.checked = false;
@@ -1114,11 +1113,21 @@ const handlers = {
   },
   export: exportData,
   reset: () => {
-    if (confirm('정말 모든 기록을 지우고 처음 상태로 돌아갈까요?') && confirm('되돌릴 수 없어요. 백업은 해두셨나요?')) {
-      store.reset();
-      toast('처음 상태로 돌아갔어요');
-      go('home');
-    }
+    // 되돌릴 수 없으니 확인 칸을 체크해야 지워진다
+    openSheet('정말 모든 기록을 지우고 처음 상태로 돌아갈까요?',
+      `<p class="muted">되돌릴 수 없어요. 먼저 백업해 두는 걸 권해요.</p>
+       <label class="chip"><input type="checkbox" name="sure"> 네, 모두 지울게요</label>`,
+      (fd) => {
+        if (!fd.get('sure')) {
+          toast('확인 칸을 눌러 주세요');
+          return 'keep';
+        }
+        store.reset();
+        toast('처음 상태로 돌아갔어요');
+        closeSheet();
+        go('home');
+        return 'no-render';
+      }, '모두 지우기', 'danger');
   },
   'close-sheet': closeSheet,
 };
