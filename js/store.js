@@ -40,13 +40,13 @@ function createDefaults() {
 
   return {
     version: 1,
+    // aliases: 예전 기본 이름. '기본 불러오기' 때 같은 항목으로 보고 건너뛴다
     emotions: [
-      { id: uid(), name: '놀고 싶음', emoji: '🎮', color: '#FF9AA2', direction: 'bad', threshold: 6 },
-      { id: uid(), name: '불안함', emoji: '😰', color: '#B5B9FF', direction: 'bad', threshold: 5 },
-      { id: uid(), name: '짜증', emoji: '😤', color: '#FFB38A', direction: 'bad', threshold: 5 },
-      { id: uid(), name: '무기력함', emoji: '🫠', color: '#C9B6A6', direction: 'bad', threshold: 5 },
-      { id: uid(), name: '집중하고 싶음', emoji: '🎯', color: '#9ED9B5', direction: 'good', threshold: 5 },
-      { id: uid(), name: '의욕', emoji: '🔥', color: '#FFD97A', direction: 'good', threshold: 5 },
+      { id: uid(), name: '남은 체력', emoji: '🔋', color: '#8EC5FF', direction: 'good', threshold: 5 },
+      { id: uid(), name: '남은 정신력', emoji: '🧠', color: '#E3A6FF', direction: 'good', threshold: 5 },
+      { id: uid(), name: '놀고 싶은 마음', emoji: '🎮', color: '#FF9AA2', direction: 'bad', threshold: 6, aliases: ['놀고 싶음'] },
+      { id: uid(), name: '미루고 싶은 마음', emoji: '🐢', color: '#C9B6A6', direction: 'bad', threshold: 5 },
+      { id: uid(), name: '집중하고 싶은 마음', emoji: '🎯', color: '#9ED9B5', direction: 'good', threshold: 5, aliases: ['집중하고 싶음'] },
     ],
     categories: [breath, body, sense, env, mind, rest, sound],
     actions: [
@@ -112,9 +112,15 @@ function persist() {
   adapter.save(data).catch((err) => console.error('저장 실패', err));
 }
 
+function freshData() {
+  const d = createDefaults();
+  d.emotions = d.emotions.map(({ aliases, ...e }) => e);
+  return d;
+}
+
 export async function init() {
   data = await adapter.load();
-  if (!data) data = createDefaults();
+  if (!data) data = freshData();
   normalize();
   persist();
 }
@@ -225,8 +231,8 @@ export function addMissingDefaults(col) {
   const tpl = createDefaults();
   const names = new Set(data[col].map((x) => x.name));
   let added = 0;
-  for (const item of tpl[col]) {
-    if (names.has(item.name)) continue;
+  for (const { aliases = [], ...item } of tpl[col]) {
+    if ([item.name, ...aliases].some((n) => names.has(n))) continue;
     const copy = { ...item, id: uid() };
     if (col === 'actions') {
       const tplCat = tpl.categories.find((c) => c.id === item.categoryId);
@@ -252,6 +258,6 @@ export function replaceAll(next) {
 }
 
 export function reset() {
-  data = createDefaults();
+  data = freshData();
   persist();
 }
