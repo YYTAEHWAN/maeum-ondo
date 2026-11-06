@@ -130,6 +130,27 @@ function byNumber(d, emo, valueOf, labelOf) {
 
 export const byConditionScore = (d, emo = 'all') => byNumber(d, emo, (c) => c.condition ?? null, (x) => `🌡️ ${x}점`);
 
+// 컨디션 요인별로 컨디션·흔들림이 어떻게 달라지는지
+export function byFactor(d, emo = 'all') {
+  const nat = naturalCheckins(d);
+  const valueOf = (f, c) => (f.scope === 'day' ? d.dayLog?.[dayKey(c.at)]?.[f.id] : c.factors?.[f.id]) ?? null;
+  const avgOf = (pts, key) => mean(pts.map((p) => p[key]).filter((x) => x != null));
+  return d.factors.map((f) => {
+    const pts = nat
+      .map((c) => ({ v: valueOf(f, c), cond: c.condition ?? null, bad: checkinBadness(d, c, emo) }))
+      .filter((p) => p.v != null);
+    if (f.type === 'bool') {
+      const group = (flag) => {
+        const g = pts.filter((p) => p.v === flag);
+        return { n: g.length, cond: avgOf(g, 'cond'), bad: avgOf(g, 'bad') };
+      };
+      return { factor: f, n: pts.length, yes: group(true), no: group(false) };
+    }
+    const pairs = (key) => pts.filter((p) => p[key] != null).map((p) => [p.v, p[key]]);
+    return { factor: f, n: pts.length, condSlope: slope(pairs('cond')), badSlope: slope(pairs('bad')) };
+  });
+}
+
 export const bySleep = (d, emo = 'all') =>
   byNumber(d, emo, (c) => {
     const s = d.sleepLog?.[dayKey(c.at)] ?? c.sleep ?? null;

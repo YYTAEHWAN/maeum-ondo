@@ -238,6 +238,10 @@ textarea { min-height: 80px; resize: vertical; }
 .card.sleep { padding: 14px 18px; }
 .card.sleep h3 { margin: 0; }
 .card.sleep .row input { flex: 1; min-width: 0; }
+.factor-stat { padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.factor-stat:last-child { border-bottom: 0; }
+.cmp { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.head-btns { display: flex; gap: 6px; flex: none; }
 .trend { background: #faf6f7; border-radius: 12px; padding: 8px 12px; font-size: 14px; }
 
 /* 관리 */

@@ -99,19 +99,25 @@ function viewHome() {
   let html = `<header class="top"><p class="muted">${fmtDate(now)}</p><h1>${greet}</h1></header>`;
 
   const sleep = store.getSleep(today);
+  const dayFactors = d.factors.filter((f) => f.scope === 'day');
+  const dayValues = store.getDay(today);
   html +=
     sleep == null || ui.editingSleep
       ? `<form id="sleep-form" class="card sleep">
-          <h3>🛌 어젯밤 몇 시간 잤어요?</h3>
-          <p class="muted">하루에 한 번만 적으면 돼요</p>
-          <div class="row">
+          <h3>🌙 오늘의 기본 기록</h3>
+          <p class="muted">하루에 한 번만 적으면 돼요. 낮잠·운동은 나중에 수정해도 돼요.</p>
+          <label class="field"><span>🛌 어젯밤 잔 시간</span>
             <input type="number" name="sleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="예: 6.5" value="${sleep ?? ''}" required>
-            <button class="btn primary" type="submit">저장</button>
-          </div>
+          </label>
+          ${factorInputs(dayFactors, dayValues)}
+          <button class="btn primary block" type="submit">저장</button>
         </form>`
-      : `<section class="card sleep spread">
-          <span>🛌 어젯밤 <b>${sleep}시간</b> 잤어요</span>
-          <button class="btn sm ghost" data-act="edit-sleep">수정</button>
+      : `<section class="card sleep">
+          <div class="spread">
+            <span>🛌 어젯밤 <b>${sleep}시간</b> 잤어요</span>
+            <button class="btn sm ghost" data-act="edit-sleep">수정</button>
+          </div>
+          ${factorChips(dayFactors, dayValues)}
         </section>`;
 
   if (pending) {
@@ -183,6 +189,7 @@ function viewCheck() {
     .join('');
 
   const triggerIds = base?.triggerIds || [];
+  const checkFactors = d.factors.filter((f) => f.scope === 'check');
   const conditionAuto = base?.condition == null || base.conditionAuto === true;
   const conditionValue = conditionAuto
     ? autoCondition(Object.fromEntries(d.emotions.map((e) => [e.id, base?.scores[e.id] ?? 5])))
@@ -197,7 +204,8 @@ function viewCheck() {
       <h3 class="sec">지금 컨디션은 전체적으로 어때요?</h3>
       <p class="muted">마음 점수에 맞춰 자동으로 채워져요. 다르면 직접 옮겨 주세요.</p>
       ${slider('condition', '🌡️ 컨디션', conditionValue, '#FFC46B', conditionAuto ? AUTO_HINT : MANUAL_HINT)}
-      <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">`;
+      <input type="hidden" name="conditionAuto" value="${conditionAuto ? '1' : '0'}">
+      ${checkFactors.length ? `<h3 class="sec">컨디션에 영향을 준 것 <span class="muted">비워 둬도 돼요</span></h3>${factorInputs(checkFactors, base?.factors || {})}` : ''}`;
 
   return `<header class="top">
       <button class="back" data-act="back">‹ 돌아가기</button>
@@ -211,6 +219,43 @@ function viewCheck() {
       </label>
       <button class="btn primary block" type="submit">${mode === 'edit' ? '수정 완료' : '기록하기'}</button>
     </form>`;
+}
+
+// ---------- 컨디션 요인 입력 ----------
+// 예/아니오 요인은 칩으로, 숫자 요인은 입력칸으로
+function factorInputs(factors, values) {
+  const nums = factors
+    .filter((f) => f.type === 'number')
+    .map(
+      (f) => `<label class="field"><span>${f.emoji} ${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''}</span>
+        <input type="number" name="factor-${f.id}" min="0" step="0.5" inputmode="decimal" value="${values[f.id] ?? ''}"></label>`
+    )
+    .join('');
+  const bools = factors.filter((f) => f.type === 'bool');
+  const chips = bools.length
+    ? `<div class="field"><span>했으면 눌러 주세요</span><div class="chips">${bools
+        .map((f) => `<label class="chip"><input type="checkbox" name="factor-${f.id}" ${values[f.id] ? 'checked' : ''}>${f.emoji} ${esc(f.name)}</label>`)
+        .join('')}</div></div>`
+    : '';
+  return nums + chips;
+}
+
+function readFactors(fd, factors) {
+  const out = {};
+  for (const f of factors) {
+    const v = fd.get(`factor-${f.id}`);
+    if (f.type === 'bool') out[f.id] = v === 'on';
+    else out[f.id] = v === '' || v === null ? null : Number(v);
+  }
+  return out;
+}
+
+function factorChips(factors, values) {
+  const chips = factors
+    .filter((f) => (f.type === 'bool' ? values[f.id] === true : values[f.id] != null))
+    .map((f) => `<span class="chip">${f.emoji} ${esc(f.name)}${f.type === 'bool' ? ' ✓' : ` ${values[f.id]}${esc(f.unit)}`}</span>`)
+    .join('');
+  return chips ? `<div>${chips}</div>` : '';
 }
 
 // 마음 점수 평균을 "높을수록 좋음" 방향으로 맞춘 값 (예: 놀고 싶음 8 → 2로 계산)
@@ -246,6 +291,7 @@ function submitCheck(form) {
     fields.triggerIds = fd.getAll('trigger');
     fields.condition = Number(fd.get('condition'));
     fields.conditionAuto = fd.get('conditionAuto') === '1';
+    fields.factors = readFactors(fd, store.get().factors.filter((f) => f.scope === 'check'));
   }
 
   const { mode, sessionId, checkinId } = ui.params;
@@ -408,7 +454,11 @@ function conditionLine(c) {
   if (c.fatigue != null) parts.push(`😪 피곤함 ${c.fatigue}`);
   const sleep = store.sleepOf(c);
   if (sleep != null) parts.push(`🛌 ${sleep}시간 잠`);
-  return parts.length ? `<p class="muted">${parts.join(' · ')}</p>` : '';
+  const d = store.get();
+  const factors =
+    factorChips(d.factors.filter((f) => f.scope === 'check'), c.factors || {}) +
+    factorChips(d.factors.filter((f) => f.scope === 'day'), store.getDay(dayKey(c.at)));
+  return (parts.length ? `<p class="muted">${parts.join(' · ')}</p>` : '') + factors;
 }
 
 function checkCard(c) {
@@ -509,6 +559,30 @@ function viewStats() {
     ${trend(cond, '컨디션')}${shake(cond.rows, '마음을 체크하면 보여요')}</section>`;
   const sleep = stats.bySleep(d, emo);
   html += `<section class="card"><h3>🛌 잠과 마음</h3>${trend(sleep, '잠 시간')}${shake(sleep.rows, '홈에서 잠 시간을 적으면 보여요')}</section>`;
+
+  const num = (v) => (v == null ? '-' : v.toFixed(1));
+  const signed = (v, what) =>
+    v == null ? '' : `${what} <b class="${(what === '흔들림' ? -v : v) >= 0 ? 'up' : 'down'}">${fmtImp(v)}점</b>`;
+  const factorRows = stats
+    .byFactor(d, emo)
+    .filter((r) => r.n)
+    .map((r) => {
+      const f = r.factor;
+      const title = `<b>${f.emoji} ${esc(f.name)}</b>`;
+      if (f.type === 'bool') {
+        const side = (g, label) =>
+          `<div class="cmp"><span>${label} <span class="muted">${g.n}회</span></span><span>컨디션 ${num(g.cond)} · 흔들림 ${num(g.bad)}</span></div>`;
+        return `<div class="factor-stat">${title}${side(r.yes, '했을 때')}${side(r.no, '안 했을 때')}</div>`;
+      }
+      const body =
+        r.condSlope == null && r.badSlope == null
+          ? `<p class="muted">값이 더 다양하게 쌓이면 경향을 계산해요 (${r.n}개)</p>`
+          : `<p>1${esc(f.unit)} 늘 때 ${[signed(r.condSlope, '컨디션'), signed(r.badSlope, '흔들림')].filter(Boolean).join(', ')} <span class="muted">(${r.n}개)</span></p>`;
+      return `<div class="factor-stat">${title}${body}</div>`;
+    })
+    .join('');
+  html += `<section class="card"><h3>🧩 컨디션 요인</h3>
+    ${factorRows || '<p class="muted">마음 체크나 오늘의 기본 기록에서 요인을 적으면 보여요</p>'}</section>`;
   html += `<section class="card"><h3>🕰️ 시간대별</h3>${shake(stats.byTimeSlot(d, emo))}</section>`;
   html += `<section class="card"><h3>📅 요일별</h3>${shake(stats.byWeekday(d, emo))}</section>`;
 
@@ -524,8 +598,13 @@ function viewStats() {
 // ---------- 관리 ----------
 function viewManage() {
   const d = store.get();
-  const section = (title, addAct, rows, empty) => `<section class="card">
-    <div class="spread sec-head"><h2 class="sec-title">${title}</h2><button class="btn sm" data-act="${addAct}">＋ 추가</button></div>
+  const section = (title, addAct, rows, empty, col) => `<section class="card">
+    <div class="spread sec-head"><h2 class="sec-title">${title}</h2>
+      <span class="head-btns">
+        <button class="btn sm ghost" data-act="load-defaults" data-id="${col}">✨ 기본</button>
+        <button class="btn sm" data-act="${addAct}">＋ 추가</button>
+      </span>
+    </div>
     ${rows || `<p class="muted">${empty}</p>`}
   </section>`;
   const item = (left, editAct, delAct, id) => `<div class="list-item">${left}
@@ -556,12 +635,22 @@ function viewManage() {
   const triggers = d.triggers
     .map((t) => item(`<span class="grow"><b>${t.emoji} ${esc(t.name)}</b></span>`, 'edit-trigger', 'del-trigger', t.id))
     .join('');
+  const factors = d.factors
+    .map((f) =>
+      item(
+        `<span class="grow"><b>${f.emoji} ${esc(f.name)}</b>
+         <span class="muted block">${f.type === 'bool' ? '했어요/안 했어요' : `숫자${f.unit ? ` (${esc(f.unit)})` : ''}`} · ${f.scope === 'day' ? '하루 한 번' : '체크할 때마다'}</span></span>`,
+        'edit-factor', 'del-factor', f.id)
+    )
+    .join('');
 
   return `<header class="top"><h1>관리 🧺</h1><p class="muted">마음 항목, 진정 방법, 상황을 내 마음대로 바꿔요</p></header>
-    ${section('💗 측정할 마음', 'edit-emotion', emotions, '마음 항목을 추가해 주세요')}
-    ${section('🗂️ 행동 카테고리', 'edit-category', categories, '카테고리가 없어요')}
-    ${section('🌿 진정 방법 (행동)', 'edit-action', actions, '진정 방법을 추가해 주세요')}
-    ${section('🌊 상황', 'edit-trigger', triggers, '상황을 추가해 주세요')}
+    <p class="muted pad">✨ 기본: 없는 기본 항목만 골라서 추가해요 (이미 있는 건 그대로)</p>
+    ${section('💗 측정할 마음', 'edit-emotion', emotions, '마음 항목을 추가해 주세요', 'emotions')}
+    ${section('🗂️ 행동 카테고리', 'edit-category', categories, '카테고리가 없어요', 'categories')}
+    ${section('🌿 진정 방법 (행동)', 'edit-action', actions, '진정 방법을 추가해 주세요', 'actions')}
+    ${section('🌊 상황', 'edit-trigger', triggers, '상황을 추가해 주세요', 'triggers')}
+    ${section('🧩 컨디션 요인', 'edit-factor', factors, '컨디션 요인을 추가해 주세요', 'factors')}
     <section class="card">
       <div class="sec-head"><h2 class="sec-title">💾 백업</h2></div>
       <p class="muted">기록은 이 폰의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니까 가끔 백업해 두세요.</p>
@@ -657,6 +746,32 @@ function triggerSheet(id, quick = false) {
       );
       return 'no-render';
     }
+  });
+}
+
+function factorSheet(id) {
+  const f = (id && store.find('factors', id)) || { name: '', emoji: '🧩', type: 'number', scope: 'check', unit: '' };
+  const radio = (name, value, label, checked) =>
+    `<label class="chip"><input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''}>${label}</label>`;
+  const body = `${nameEmojiFields(f, '예: 물 마신 양')}
+    <div class="field"><span>기록 방식</span><div class="chips">
+      ${radio('type', 'number', '숫자로 적기', f.type !== 'bool')}
+      ${radio('type', 'bool', '했어요/안 했어요', f.type === 'bool')}
+    </div></div>
+    <label class="field"><span>단위 (숫자일 때만, 선택)</span><input type="text" name="unit" value="${esc(f.unit)}" maxlength="10" placeholder="예: 시간, 잔, 분"></label>
+    <div class="field"><span>언제 적나요?</span><div class="chips">
+      ${radio('scope', 'check', '마음 체크할 때마다', f.scope !== 'day')}
+      ${radio('scope', 'day', '하루에 한 번 (홈 화면)', f.scope === 'day')}
+    </div></div>`;
+  openSheet(id ? '컨디션 요인 수정' : '컨디션 요인 추가', body, (fd) => {
+    store.upsert('factors', {
+      id,
+      name: fd.get('name').trim(),
+      emoji: fd.get('emoji').trim() || '🧩',
+      type: fd.get('type') === 'bool' ? 'bool' : 'number',
+      unit: (fd.get('unit') || '').trim(),
+      scope: fd.get('scope') === 'day' ? 'day' : 'check',
+    });
   });
 }
 
@@ -772,6 +887,13 @@ const handlers = {
   'edit-trigger': triggerSheet,
   'del-trigger': (id) => confirmDelete('이 상황을 지울까요?', () => store.remove('triggers', id)),
   'quick-trigger': () => triggerSheet(null, true),
+  'edit-factor': factorSheet,
+  'del-factor': (id) => confirmDelete('이 컨디션 요인을 지울까요?\n예전 기록의 값은 통계에서 빠져요.', () => store.remove('factors', id)),
+  'load-defaults': (col) => {
+    const n = store.addMissingDefaults(col);
+    toast(n ? `기본 항목 ${n}개를 추가했어요 ✨` : '기본 항목이 이미 다 있어요');
+    render();
+  },
   export: exportData,
   reset: () => {
     if (confirm('정말 모든 기록을 지우고 처음 상태로 돌아갈까요?') && confirm('되돌릴 수 없어요. 백업은 해두셨나요?')) {
@@ -814,9 +936,12 @@ document.addEventListener('submit', (e) => {
   if (form.id === 'check-form') submitCheck(form);
   else if (form.id === 'pick-form') submitPick(form);
   else if (form.id === 'sleep-form') {
-    store.setSleep(dayKey(new Date()), Number(new FormData(form).get('sleep')));
+    const fd = new FormData(form);
+    const today = dayKey(new Date());
+    store.setSleep(today, Number(fd.get('sleep')));
+    store.setDayFactors(today, readFactors(fd, store.get().factors.filter((f) => f.scope === 'day')));
     ui.editingSleep = false;
-    toast('잠 시간을 저장했어요 🛌');
+    toast('오늘 기록을 저장했어요 🌙');
     render();
   }
   else if (form.id === 'sheet-form' && sheetSubmit) {
