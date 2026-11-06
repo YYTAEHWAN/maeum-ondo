@@ -506,8 +506,7 @@ function viewStats() {
       : `<p class="trend">${unit}이 1 늘 때 흔들림이 <b>${Math.abs(r.slope).toFixed(1)}점 ${r.slope > 0 ? '올라가요 📈' : '내려가요 📉'}</b> <span class="muted">(${r.n}개 기준)</span></p>`;
   const cond = stats.byConditionScore(d, emo);
   html += `<section class="card"><h3>🌡️ 컨디션과 마음</h3>
-    <p class="muted">직접 정한 컨디션만 써요. 자동으로 채워진 값은 마음 점수에서 나온 거라 뺐어요.</p>
-    ${trend(cond, '컨디션')}${shake(cond.rows, '컨디션을 직접 정한 기록이 생기면 보여요')}</section>`;
+    ${trend(cond, '컨디션')}${shake(cond.rows, '마음을 체크하면 보여요')}</section>`;
   const sleep = stats.bySleep(d, emo);
   html += `<section class="card"><h3>🛌 잠과 마음</h3>${trend(sleep, '잠 시간')}${shake(sleep.rows, '홈에서 잠 시간을 적으면 보여요')}</section>`;
   html += `<section class="card"><h3>🕰️ 시간대별</h3>${shake(stats.byTimeSlot(d, emo))}</section>`;

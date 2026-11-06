@@ -128,9 +128,7 @@ function byNumber(d, emo, valueOf, labelOf) {
   return { rows, slope: slope(points), n: points.length };
 }
 
-// 자동으로 채워진 컨디션은 마음 점수에서 나온 값이라 분석에서 뺀다
-export const byConditionScore = (d, emo = 'all') =>
-  byNumber(d, emo, (c) => (c.condition != null && !c.conditionAuto ? c.condition : null), (x) => `🌡️ ${x}점`);
+export const byConditionScore = (d, emo = 'all') => byNumber(d, emo, (c) => c.condition ?? null, (x) => `🌡️ ${x}점`);
 
 export const bySleep = (d, emo = 'all') =>
   byNumber(d, emo, (c) => {
