@@ -1,3 +1,5 @@
+import { dayKey } from './store.js';
+
 // 통계 계산
 // 흔들림 지수: 0~10, 높을수록 공부하기 어려운 상태.
 // "높을수록 좋은" 마음(direction: 'good')은 10에서 빼서 같은 방향으로 맞춘다.
@@ -104,11 +106,13 @@ export function byTrigger(d, emo = 'all') {
 }
 
 export function byCondition(d, emo = 'all') {
+  const sleep = (c) => d.sleepLog?.[dayKey(c.at)] ?? c.sleep ?? null;
   return groupBadness(d, emo, [
-    ['😪 피곤함 6 이상', (c) => c.fatigue != null && c.fatigue >= 6],
-    ['🙂 피곤함 5 이하', (c) => c.fatigue != null && c.fatigue < 6],
-    ['🥱 잠 6시간 미만', (c) => c.sleep != null && c.sleep < 6],
-    ['😴 잠 6시간 이상', (c) => c.sleep != null && c.sleep >= 6],
+    ['😫 컨디션 나쁨', (c) => c.condition != null && c.condition <= 2],
+    ['🙂 컨디션 보통', (c) => c.condition === 3],
+    ['😊 컨디션 좋음', (c) => c.condition != null && c.condition >= 4],
+    ['🥱 잠 6시간 미만', (c) => sleep(c) != null && sleep(c) < 6],
+    ['😴 잠 6시간 이상', (c) => sleep(c) != null && sleep(c) >= 6],
   ]).filter((g) => g.n);
 }
 

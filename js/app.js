@@ -5,7 +5,7 @@ const $app = document.getElementById('app');
 const $tabbar = document.getElementById('tabbar');
 const $sheet = document.getElementById('sheet-root');
 
-const ui = { view: 'home', params: {}, statsEmo: 'all', historyFilter: 'all' };
+const ui = { view: 'home', params: {}, statsEmo: 'all', historyFilter: 'all', editingSleep: false };
 let sheetSubmit = null;
 
 // ---------- 도우미 ----------
@@ -20,10 +20,14 @@ const fmtDate = (v) => {
   const d = new Date(v);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;
 };
-const dayKey = (v) => {
-  const d = new Date(v);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
+const dayKey = store.dayKey;
+const CONDITIONS = [
+  [1, '😫', '최악'],
+  [2, '😕', '별로'],
+  [3, '🙂', '보통'],
+  [4, '😊', '좋음'],
+  [5, '🤩', '최고'],
+];
 const byAtDesc = (a, b) => b.at.localeCompare(a.at);
 const fmtImp = (n) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
 const impText = (n) => (n > 0 ? `${n.toFixed(1)}점 좋아졌어요` : n < 0 ? `${(-n).toFixed(1)}점 나빠졌어요` : '변화 없었어요');
@@ -98,6 +102,22 @@ function viewHome() {
   const best = stats.byAction(d)[0];
 
   let html = `<header class="top"><p class="muted">${fmtDate(now)}</p><h1>${greet}</h1></header>`;
+
+  const sleep = store.getSleep(today);
+  html +=
+    sleep == null || ui.editingSleep
+      ? `<form id="sleep-form" class="card sleep">
+          <h3>🛌 어젯밤 몇 시간 잤어요?</h3>
+          <p class="muted">하루에 한 번만 적으면 돼요</p>
+          <div class="row">
+            <input type="number" name="sleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="예: 6.5" value="${sleep ?? ''}" required>
+            <button class="btn primary" type="submit">저장</button>
+          </div>
+        </form>`
+      : `<section class="card sleep spread">
+          <span>🛌 어젯밤 <b>${sleep}시간</b> 잤어요</span>
+          <button class="btn sm ghost" data-act="edit-sleep">수정</button>
+        </section>`;
 
   if (pending) {
     const elapsed = (Date.now() - new Date(pending.at).getTime()) / 60000;
@@ -175,11 +195,11 @@ function viewCheck() {
         .map((t) => `<label class="chip"><input type="checkbox" name="trigger" value="${t.id}" ${triggerIds.includes(t.id) ? 'checked' : ''}>${t.emoji} ${esc(t.name)}</label>`)
         .join('')}</div>
       <button type="button" class="btn sm ghost" data-act="quick-trigger">＋ 새 상황</button>
-      <h3 class="sec">컨디션</h3>
-      ${slider('fatigue', '😪 피곤함', base?.fatigue ?? 5, '#C9B6FF')}
-      <label class="field"><span>🛌 어젯밤 잔 시간 (선택)</span>
-        <input type="number" name="sleep" min="0" max="24" step="0.5" inputmode="decimal" placeholder="예: 6.5" value="${base?.sleep ?? ''}">
-      </label>`;
+      <h3 class="sec">오늘 컨디션은 전체적으로 어때요?</h3>
+      <div class="conds">${CONDITIONS.map(
+        ([v, emoji, label]) => `<label class="cond"><input type="radio" name="condition" value="${v}" ${base?.condition === v ? 'checked' : ''}>
+          <span class="e">${emoji}</span><span>${label}</span></label>`
+      ).join('')}</div>`;
 
   return `<header class="top">
       <button class="back" data-act="back">‹ 돌아가기</button>
@@ -203,11 +223,10 @@ function submitCheck(form) {
     if (v !== null) scores[e.id] = Number(v);
   }
   const fields = { scores, memo: (fd.get('memo') || '').trim() };
-  if (form.querySelector('[name=fatigue]')) {
+  if (form.querySelector('[name=condition]')) {
     fields.triggerIds = fd.getAll('trigger');
-    fields.fatigue = Number(fd.get('fatigue'));
-    const sl = fd.get('sleep');
-    fields.sleep = sl === '' || sl === null ? null : Number(sl);
+    const cond = fd.get('condition');
+    fields.condition = cond ? Number(cond) : null;
   }
 
   const { mode, sessionId, checkinId } = ui.params;
@@ -233,14 +252,23 @@ function viewResult() {
   const over = d.emotions.filter((e) => c.scores[e.id] != null && !stats.isOk(e, c.scores[e.id]));
 
   let html = over.length
-    ? `<div class="hero"><div class="big">🌊</div><h1>마음이 조금 출렁이고 있어요</h1><p class="muted">괜찮아요, 잠깐 가라앉히고 다시 시작해요</p></div>
+    ? `<div class="hero"><div class="big">🌊</div><h1>마음이 조금 출렁이네요</h1><p class="muted">잠깐 가라앉히면 공부가 더 잘될 수도 있어요.<br>물론 바로 시작해도 괜찮아요!</p></div>
        <div class="card"><h3>기준을 넘은 마음</h3>${over.map((e) => scoreChip(e, c.scores[e.id])).join('')}
        <p class="muted">${over.map((e) => `${e.emoji} ${esc(e.name)}: ${e.threshold}점 ${e.direction === 'good' ? '이상' : '이하'}면 괜찮아요`).join('<br>')}</p></div>`
     : `<div class="hero"><div class="big">✨</div><h1>공부하기 좋은 상태예요!</h1><p class="muted">지금 바로 시작해 볼까요?</p></div>
        <div class="card">${scoreChips(c)}</div>`;
 
-  if (over.length || ui.params.showActions) {
+  if (ui.params.showActions) {
     html += actionPicker(over.map((e) => e.id));
+    html += `<button class="btn ghost block" data-act="go-study">괜찮아요, 그냥 공부할게요 📚</button>`;
+  } else if (over.length) {
+    // 권하기만 하고 고르는 건 사용자에게 맡긴다
+    const tip = stats.recommend(d, over.map((e) => e.id)).find((r) => r.avg > 0);
+    html += `${tip ? `<div class="card tip"><p>💡 이럴 땐 <b>${tip.action.emoji} ${esc(tip.action.name)}</b> 하고 나서 평균 ${impText(tip.avg)}</p></div>` : ''}
+      <div class="stack">
+        <button class="btn primary block" data-act="show-actions">🌿 잠깐 가라앉혀 볼래요</button>
+        <button class="btn ghost block" data-act="go-study">📚 괜찮아요, 바로 공부할게요</button>
+      </div>`;
   } else {
     html += `<div class="stack">
       <button class="btn primary block" data-act="go-study">📚 공부하러 갈게요</button>
@@ -357,8 +385,11 @@ function viewHistory() {
 
 function conditionLine(c) {
   const parts = [];
+  const cond = CONDITIONS.find(([v]) => v === c.condition);
+  if (cond) parts.push(`${cond[1]} 컨디션 ${cond[2]}`);
   if (c.fatigue != null) parts.push(`😪 피곤함 ${c.fatigue}`);
-  if (c.sleep != null) parts.push(`🛌 ${c.sleep}시간 잠`);
+  const sleep = store.sleepOf(c);
+  if (sleep != null) parts.push(`🛌 ${sleep}시간 잠`);
   return parts.length ? `<p class="muted">${parts.join(' · ')}</p>` : '';
 }
 
@@ -451,7 +482,7 @@ function viewStats() {
   html += `<section class="card"><h3>🌊 어떤 상황에 마음이 흔들릴까?</h3>
     <p class="muted">흔들림 지수 평균 (0~10, 높을수록 공부하기 어려움)${ov.avgBadness != null ? ` · 평소 ${ov.avgBadness.toFixed(1)}` : ''}</p>
     ${shake(stats.byTrigger(d, emo), '체크할 때 상황을 고르면 여기에 쌓여요')}</section>`;
-  html += `<section class="card"><h3>😪 컨디션과 마음</h3>${shake(stats.byCondition(d, emo))}</section>`;
+  html += `<section class="card"><h3>🌡️ 컨디션·잠과 마음</h3>${shake(stats.byCondition(d, emo))}</section>`;
   html += `<section class="card"><h3>🕰️ 시간대별</h3>${shake(stats.byTimeSlot(d, emo))}</section>`;
   html += `<section class="card"><h3>📅 요일별</h3>${shake(stats.byWeekday(d, emo))}</section>`;
 
@@ -468,7 +499,7 @@ function viewStats() {
 function viewManage() {
   const d = store.get();
   const section = (title, addAct, rows, empty) => `<section class="card">
-    <div class="spread"><h3>${title}</h3><button class="btn sm" data-act="${addAct}">＋ 추가</button></div>
+    <div class="spread sec-head"><h2 class="sec-title">${title}</h2><button class="btn sm" data-act="${addAct}">＋ 추가</button></div>
     ${rows || `<p class="muted">${empty}</p>`}
   </section>`;
   const item = (left, editAct, delAct, id) => `<div class="list-item">${left}
@@ -506,7 +537,7 @@ function viewManage() {
     ${section('🌿 진정 방법 (행동)', 'edit-action', actions, '진정 방법을 추가해 주세요')}
     ${section('🌊 상황', 'edit-trigger', triggers, '상황을 추가해 주세요')}
     <section class="card">
-      <h3>💾 백업</h3>
+      <div class="sec-head"><h2 class="sec-title">💾 백업</h2></div>
       <p class="muted">기록은 이 폰의 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니까 가끔 백업해 두세요.</p>
       <div class="row">
         <button class="btn" data-act="export">내보내기</button>
@@ -698,6 +729,10 @@ const handlers = {
     ui.statsEmo = id;
     render();
   },
+  'edit-sleep': () => {
+    ui.editingSleep = true;
+    render();
+  },
   'edit-check': (id) => go('check', { mode: 'edit', checkinId: id, back: 'history' }),
   'del-check': (id) => confirmDelete('이 기록을 지울까요?', () => store.removeCheckin(id)),
   'edit-session': editSessionSheet,
@@ -741,6 +776,12 @@ document.addEventListener('submit', (e) => {
   const form = e.target;
   if (form.id === 'check-form') submitCheck(form);
   else if (form.id === 'pick-form') submitPick(form);
+  else if (form.id === 'sleep-form') {
+    store.setSleep(dayKey(new Date()), Number(new FormData(form).get('sleep')));
+    ui.editingSleep = false;
+    toast('잠 시간을 저장했어요 🛌');
+    render();
+  }
   else if (form.id === 'sheet-form' && sheetSubmit) {
     const result = sheetSubmit(new FormData(form));
     if (result === 'keep') return;

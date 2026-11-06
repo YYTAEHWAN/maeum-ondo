@@ -8,6 +8,12 @@ let data = null;
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+const pad = (n) => String(n).padStart(2, '0');
+export const dayKey = (v) => {
+  const d = new Date(v);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 function createDefaults() {
   const cat = (name, emoji) => ({ id: uid(), name, emoji });
   const breath = cat('호흡', '🫁');
@@ -50,12 +56,14 @@ function createDefaults() {
     ],
     checkins: [],
     sessions: [],
+    sleepLog: {},
   };
 }
 
 function normalize() {
   data.version ||= 1;
   for (const k of COLLECTIONS) if (!Array.isArray(data[k])) data[k] = [];
+  if (!data.sleepLog || typeof data.sleepLog !== 'object') data.sleepLog = {};
 }
 
 function persist() {
@@ -91,7 +99,7 @@ export function remove(col, id) {
 
 // ---------- 마음 체크 ----------
 export function addCheckin(fields) {
-  const c = { id: uid(), at: new Date().toISOString(), scores: {}, triggerIds: [], fatigue: null, sleep: null, memo: '', ...fields };
+  const c = { id: uid(), at: new Date().toISOString(), scores: {}, triggerIds: [], condition: null, memo: '', ...fields };
   data.checkins.push(c);
   persist();
   return c;
@@ -149,6 +157,17 @@ export function removeSession(id, withCheckins) {
 export function pendingSession() {
   return [...data.sessions].reverse().find((s) => !s.afterId) || null;
 }
+
+// ---------- 잠 (하루에 한 번) ----------
+export const getSleep = (day) => data.sleepLog[day] ?? null;
+
+export function setSleep(day, hours) {
+  data.sleepLog[day] = hours;
+  persist();
+}
+
+// 예전 기록은 체크마다 잠 시간을 따로 가지고 있었다
+export const sleepOf = (c) => data.sleepLog[dayKey(c.at)] ?? c.sleep ?? null;
 
 // ---------- 백업 ----------
 export function replaceAll(next) {
